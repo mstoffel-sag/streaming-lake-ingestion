@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# macOS
+.DS_Store
+
+# Docker volumes / overrides
+docker-compose.override.yml
+
+# IDE
+.idea/
+.vscode/
+*.iml
