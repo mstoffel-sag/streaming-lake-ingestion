@@ -1,0 +1,7 @@
+FROM metabase/metabase:latest
+
+ARG DRIVER_VERSION=v1.0.2
+ARG DRIVER_JAR=starrocks.metabase-driver-${DRIVER_VERSION}.jar
+ARG DRIVER_URL=https://github.com/Carbon-Arc/metabase-starrocks-driver/releases/download/${DRIVER_VERSION}/${DRIVER_JAR}
+
+ADD ${DRIVER_URL} /plugins/starrocks.metabase-driver.jar

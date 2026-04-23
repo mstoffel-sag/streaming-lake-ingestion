@@ -1,19 +1,26 @@
 # Streaming Lake Ingestion
 
-Query Apache Iceberg tables managed in a [Polaris](https://polaris.apache.org/) catalog using [Trino](https://trino.io/) as the query engine and [Metabase](https://www.metabase.com/) as the BI frontend.
+Query Apache Iceberg tables managed in a [Polaris](https://polaris.apache.org/) catalog using [Metabase](https://www.metabase.com/) as the BI frontend.
+
+Two query engines are available; pick one and switch any time.
+
+| Engine | Best for | Metabase driver |
+|--------|----------|-----------------|
+| **Trino** (default) | Standard SQL, lower memory | Trino |
+| **StarRocks** | High-performance analytics, MySQL-compatible | MySQL 8+ |
 
 ## Architecture
 
 ```
 Metabase (port 3000)
-    └── Trino (port 8080)
-            └── Polaris REST Catalog (OAuth2 client-credentials)
-                    └── S3 (static credentials, no credential vending)
+    └── Trino (port 8080)  OR  StarRocks FE (port 9030)
+            └── Polaris REST Catalog  (OAuth2 client-credentials)
+                    └── S3  (static credentials, no credential vending)
 ```
 
 ## Prerequisites
 
-- Docker with Compose (tested on Colima on macOS ARM64)
+- Docker with Compose ≥ 2.20 (tested on Colima on macOS ARM64)
 - Polaris catalog with OAuth2 client credentials
 - AWS S3 bucket and IAM credentials with read access
 
@@ -27,72 +34,144 @@ Metabase (port 3000)
 
 2. Edit `.env` with your Polaris and S3 credentials.
 
-3. Start the stack:
+3. Start the default (Trino) stack:
 
    ```bash
    docker compose up -d
    ```
 
-   Trino starts first; Metabase waits until Trino is healthy (~30 seconds).
+   Metabase will be available at http://localhost:3000 once Trino is healthy (~30 s).
 
-4. Open Metabase at http://localhost:3000 and complete the initial setup.
+---
 
-## Connecting Metabase to Trino
+## Switching Query Engines
 
-In Metabase → **Admin → Databases → Add database**:
+> Always stop the current stack before starting the other — container names overlap.
 
-| Field    | Value       |
-|----------|-------------|
-| Type     | Trino       |
-| Host     | `trino`     |
-| Port     | `8080`      |
-| Catalog  | `polaris`   |
-| Username | `trino`     |
-| Password | *(blank)*   |
+### → Switch to StarRocks
+
+```bash
+docker compose down
+docker compose --env-file .env -f starrocks/docker-compose.yml up -d
+```
+
+On first start an init container automatically creates the `polaris` external catalog in StarRocks and exits.
+
+### → Switch back to Trino
+
+```bash
+docker compose -f starrocks/docker-compose.yml down
+docker compose up -d
+```
+
+Metabase data (saved questions, dashboards) persists across switches via the shared `metabase_data` Docker volume.
+
+---
+
+## Connecting Metabase
+
+### Trino
+
+Admin → Databases → Add database → **Trino**
+
+| Field    | Value     |
+|----------|-----------|
+| Host     | `trino`   |
+| Port     | `8080`    |
+| Catalog  | `polaris` |
+| Username | `trino`   |
+| Password | *(blank)* |
+
+### StarRocks
+
+Admin → Databases → Add database → **MySQL**
+
+| Field                                     | Value                                    |
+|-------------------------------------------|------------------------------------------|
+| Host                                      | `starrocks`                              |
+| Port                                      | `9030`                                   |
+| Database                                  | `information_schema`                     |
+| Username                                  | `root`                                   |
+| Password                                  | *(blank)*                                |
+| Additional JDBC connection string options | `tinyInt1isBit=false&useSSL=false&useMysqlMetadata=true` |
+
+Available namespaces:
+
+```bash
+docker exec starrocks mysql -h 127.0.0.1 -P 9030 -u root -e "SHOW DATABASES FROM polaris;"
+```
+
+> **Note:** Use just the namespace name (e.g. `cdc_measurement`) as the Database field — not `polaris.cdc_measurement`.
+
+Then query Iceberg tables via the `polaris` catalog:
+```sql
+SELECT * FROM polaris.`polaris`.`cdc_measurement`
+```
+
+> **Note on case-sensitive table names:** Both Trino and StarRocks lowercase unquoted identifiers. Use backticks (StarRocks) or double-quotes (Trino) for mixed-case names.
+
+---
 
 ## Project Structure
 
 ```
 .
-├── docker-compose.yml
-├── .env                      # local secrets — never committed
-├── .env.example              # template for .env
-└── trino/
-    └── etc/
-        ├── config.properties # Trino server config (memory limits)
-        ├── jvm.config        # JVM heap settings (2 GB)
-        ├── node.properties
-        ├── log.properties
-        └── catalog/
-            └── polaris.properties  # Iceberg REST catalog + OAuth2 + S3
+├── docker-compose.yml            # default stack (includes trino/)
+├── .env                          # local secrets — never committed
+├── .env.example                  # template for .env
+├── trino/
+│   ├── docker-compose.yml        # Trino + Metabase stack
+│   └── etc/
+│       ├── config.properties     # query memory limits
+│       ├── jvm.config            # JVM heap (2 GB)
+│       ├── node.properties
+│       ├── log.properties
+│       └── catalog/
+│           └── polaris.properties  # REST catalog + OAuth2 + S3
+└── starrocks/
+    ├── docker-compose.yml        # StarRocks + Metabase stack
+    ├── fe.conf                   # FE JVM heap (800 MB)
+    ├── be.conf                   # BE memory limit (1.5 GB)
+    └── init/
+        └── init-catalog.sh       # creates polaris external catalog on first start
 ```
+
+## Memory Budget (6 GB host)
+
+| Container          | Heap / Limit     | Stack      |
+|--------------------|------------------|------------|
+| Trino              | 2 GB JVM / 3 GB  | trino      |
+| Metabase           | 1.5 GB / 2 GB    | both       |
+| StarRocks FE       | 800 MB JVM       | starrocks  |
+| StarRocks BE       | 1.5 GB / 3 GB    | starrocks  |
 
 ## Configuration Notes
 
 ### OAuth2
-Trino uses the client-credentials flow. Set `POLARIS_CLIENT_CREDENTIAL` as `client_id:client_secret` in `.env`. The token endpoint is derived automatically from `POLARIS_URI` (`/v1/oauth/tokens`).
+Both engines use the Iceberg REST catalog client-credentials flow.  
+`POLARIS_CLIENT_CREDENTIAL` = `CLIENT_ID:CLIENT_SECRET`.  
+The token endpoint is auto-derived as `{POLARIS_URI}/v1/oauth/tokens`.
 
 ### S3 — No Credential Vending
-Credential vending from Polaris is disabled (`iceberg.rest-catalog.vended-credentials-enabled=false`). Trino authenticates directly to S3 using `AWS_ACCESS_KEY` / `AWS_SECRET_KEY`.
-
-### Memory (6 GB host)
-| Container | Heap / Limit |
-|-----------|-------------|
-| Trino     | 2 GB JVM / 3 GB container |
-| Metabase  | 1.5 GB JVM / 2 GB container |
+Trino: `iceberg.rest-catalog.vended-credentials-enabled=false` — uses static AWS keys.  
+StarRocks: AWS keys are set directly on the external catalog — credential vending is not used.
 
 ## Useful Commands
 
 ```bash
-# View logs
+# Logs
 docker compose logs -f
+docker compose --env-file .env -f starrocks/docker-compose.yml logs -f
 
-# Restart Trino only (e.g. after config change)
+# Restart after config change
 docker compose restart trino
+docker compose --env-file .env -f starrocks/docker-compose.yml restart starrocks
 
 # Stop everything
 docker compose down
+docker compose -f starrocks/docker-compose.yml down
 
-# Stop and remove volumes (resets Metabase)
+# Full reset including volumes (resets Metabase)
 docker compose down -v
 ```
+

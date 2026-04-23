@@ -1,0 +1,60 @@
+services:
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    container_name: starrocks
+    ports:
+      - "8080:8080"   # FE HTTP (allin1 default)
+      - "9030:9030"   # FE MySQL protocol (Metabase connects here)
+    volumes:
+      - starrocks_data:/opt/starrocks/be/storage
+    mem_limit: 3g
+    healthcheck:
+      # allin1 image runs FE HTTP on 8080 by default
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9030 -u root --connect-timeout=3 -e 'SELECT 1' > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  starrocks-init:
+    image: mysql:8.0
+    container_name: starrocks-init
+    depends_on:
+      starrocks:
+        condition: service_healthy
+    volumes:
+      - ./init:/init
+    environment:
+      - POLARIS_URI=${POLARIS_URI}
+      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
+      - POLARIS_CLIENT_CREDENTIAL=${POLARIS_CLIENT_CREDENTIAL}
+      - POLARIS_SCOPE=${POLARIS_SCOPE}
+      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
+      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
+      - AWS_REGION=${AWS_REGION}
+    entrypoint: ["/bin/bash", "/init/init-catalog.sh"]
+    restart: "no"
+
+  metabase:
+    build:
+      context: .
+      dockerfile: Dockerfile.metabase
+    platform: linux/arm64
+    container_name: metabase
+    ports:
+      - "3000:3000"
+    environment:
+      - JAVA_OPTS=-Xmx1500m
+      - MB_DB_TYPE=h2
+      - MB_DB_FILE=/metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    depends_on:
+      starrocks:
+        condition: service_healthy
+    mem_limit: 2g
+
+volumes:
+  starrocks_data:
+  metabase_data:
+    name: metabase_data   # shared name so Metabase data persists when switching engines

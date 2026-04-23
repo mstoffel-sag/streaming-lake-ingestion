@@ -1,43 +1,12 @@
-services:
-  trino:
-    image: trinodb/trino:469
-    container_name: trino
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./trino/etc:/etc/trino
-    environment:
-      - POLARIS_CLIENT_CREDENTIAL=${POLARIS_CLIENT_CREDENTIAL}
-      - POLARIS_URI=${POLARIS_URI}
-      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
-      - POLARIS_SCOPE=${POLARIS_SCOPE}
-      - POLARIS_OAUTH2_SERVER_URI=${POLARIS_OAUTH2_SERVER_URI}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
-      - AWS_REGION=${AWS_REGION}
-    mem_limit: 3g
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
+# Default stack: Trino + Metabase
+# Requires Docker Compose >= 2.20 for the include directive.
+#
+# Switch engines:
+#   Trino (default) : docker compose up -d
+#   StarRocks       : docker compose -f starrocks/docker-compose.yml up -d
+#
+# Always stop the current stack before starting the other:
+#   docker compose down
 
-  metabase:
-    image: metabase/metabase:latest
-    container_name: metabase
-    ports:
-      - "3000:3000"
-    environment:
-      - JAVA_OPTS=-Xmx1500m
-      - MB_DB_TYPE=h2
-      - MB_DB_FILE=/metabase-data/metabase.db
-    volumes:
-      - metabase_data:/metabase-data
-    depends_on:
-      trino:
-        condition: service_healthy
-    mem_limit: 2g
-
-volumes:
-  metabase_data:
+include:
+  - path: trino/docker-compose.yml
