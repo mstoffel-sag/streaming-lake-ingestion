@@ -1,12 +1,5 @@
-# Default stack: Trino + Metabase
+# StarRocks + Metabase stack
 # Requires Docker Compose >= 2.20 for the include directive.
-#
-# Switch engines:
-#   Trino (default) : docker compose up -d
-#   StarRocks       : docker compose -f starrocks/docker-compose.yml up -d
-#
-# Always stop the current stack before starting the other:
-#   docker compose down
 
 include:
-  - path: trino/docker-compose.yml
+  - path: starrocks/docker-compose.yml
