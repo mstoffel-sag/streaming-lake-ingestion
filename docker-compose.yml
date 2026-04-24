@@ -1,5 +1,0 @@
-# StarRocks + Metabase stack
-# Requires Docker Compose >= 2.20 for the include directive.
-
-include:
-  - path: starrocks/docker-compose.yml
