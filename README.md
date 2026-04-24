@@ -19,21 +19,13 @@ Metabase (port 3000)  [native StarRocks driver]
 
 ## Setup
 
-1. Copy the example environment file and fill in your credentials:
+```bash
+cd starrocks
+cp .env.example .env   # fill in your credentials
+docker compose up -d
+```
 
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Edit `.env` with your Polaris and S3 credentials.
-
-3. Start the stack:
-
-   ```bash
-   docker compose up -d
-   ```
-
-   Metabase will be available at http://localhost:3000 once StarRocks is healthy (~90 s).
+Metabase will be available at http://localhost:3000 once StarRocks is healthy (~90 s).
 
 ---
 
@@ -50,7 +42,7 @@ Admin → Databases → Add database → **StarRocks**
 | Username | `root`      |
 | Password | *(blank)*   |
 
-The native StarRocks driver ([Carbon-Arc/metabase-starrocks-driver](https://github.com/Carbon-Arc/metabase-starrocks-driver)) is baked into the Metabase image automatically via `starrocks/Dockerfile.metabase`.
+The native StarRocks driver ([Carbon-Arc/metabase-starrocks-driver](https://github.com/Carbon-Arc/metabase-starrocks-driver)) is baked into the Metabase image automatically via `Dockerfile.metabase`.
 
 List available namespaces:
 
@@ -64,20 +56,20 @@ Query Iceberg tables (backtick-quote mixed-case names):
 SELECT * FROM polaris.cdc_measurement.`c8y_Temperature`
 ```
 
+> **Known limitation:** Namespaces or tables whose name **starts with `view`** cannot be queried from StarRocks due to a parser conflict with the SQL `VIEW` keyword. Rename them in Polaris (e.g. `view_measurement` → `measurement_view`) to work around this.
+
 ---
 
 ## Project Structure
 
 ```
-.
-├── docker-compose.yml            # entry point (includes starrocks/)
+starrocks/                        ← work from this directory
+├── docker-compose.yml            # StarRocks + Metabase stack
+├── Dockerfile.metabase           # Metabase + StarRocks driver baked in
 ├── .env                          # local secrets — never committed
 ├── .env.example                  # template for .env
-└── starrocks/
-    ├── docker-compose.yml        # StarRocks + Metabase stack
-    ├── Dockerfile.metabase       # Metabase + StarRocks driver baked in
-    └── init/
-        └── init-catalog.sh       # creates polaris external catalog on first start
+└── init/
+    └── init-catalog.sh           # creates polaris external catalog on first start
 ```
 
 ## Memory Budget (6 GB host)
@@ -99,6 +91,8 @@ AWS keys are set directly on the external catalog (`iceberg.catalog.vended-crede
 
 ## Useful Commands
 
+All commands must be run from the `starrocks/` directory.
+
 ```bash
 # Logs
 docker compose logs -f
@@ -106,10 +100,13 @@ docker compose logs -f
 # Restart StarRocks after config change
 docker compose restart starrocks
 
+# Re-register the Polaris catalog (e.g. after credentials change)
+docker compose run --rm starrocks-init
+
 # Stop everything
 docker compose down
 
-# Full reset including volumes (resets Metabase)
+# Full reset including volumes (resets Metabase + catalog)
 docker compose down -v
 
 # Rebuild Metabase image (e.g. after driver version bump)

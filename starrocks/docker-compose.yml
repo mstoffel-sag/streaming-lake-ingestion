@@ -52,6 +52,8 @@ services:
     depends_on:
       starrocks:
         condition: service_healthy
+      starrocks-init:
+        condition: service_completed_successfully
     mem_limit: 2g
 
 volumes:
