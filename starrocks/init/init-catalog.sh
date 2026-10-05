@@ -10,7 +10,7 @@ mysql -h starrocks -P 9030 -u root --connect-timeout=10 <<EOF
 DROP CATALOG IF EXISTS polaris;
 
 CREATE EXTERNAL CATALOG polaris
-COMMENT 'Polaris Iceberg REST catalog (OAuth2, static S3 credentials)'
+COMMENT 'Polaris Iceberg REST catalog (OAuth2, vended S3 credentials)'
 PROPERTIES (
     "type"                                    = "iceberg",
     "iceberg.catalog.type"                    = "rest",
@@ -20,15 +20,15 @@ PROPERTIES (
     "iceberg.catalog.credential"              = "${POLARIS_CLIENT_CREDENTIAL}",
     "iceberg.catalog.scope"                   = "${POLARIS_SCOPE}",
 
-    "iceberg.catalog.vended-credentials-enabled" = "false",
+    -- Polaris assumes the lake's IAM role and returns short-lived S3
+    -- credentials scoped to each table's location; no AWS keys needed here.
+    "iceberg.catalog.vended-credentials-enabled" = "true",
 
-    "aws.s3.use_instance_profile"             = "false",
-    "aws.s3.access_key"                       = "${AWS_ACCESS_KEY}",
-    "aws.s3.secret_key"                       = "${AWS_SECRET_KEY}",
     "aws.s3.region"                           = "${AWS_REGION}"
 );
 
 SHOW CATALOGS;
+SHOW DATABASES FROM polaris;
 EOF
 
 echo "[init] Done. Polaris catalog is ready."

@@ -8,14 +8,16 @@ Query Apache Iceberg tables managed in a [Polaris](https://polaris.apache.org/) 
 Metabase (port 3000)  [native StarRocks driver]
     └── StarRocks FE (port 9030)
             └── Polaris REST Catalog  (OAuth2 client-credentials)
-                    └── S3  (static credentials, no credential vending)
+                    └── S3  (short-lived credentials vended by Polaris per table)
 ```
 
 ## Prerequisites
 
 - Docker with Compose ≥ 2.20 (tested on Colima on macOS ARM64)
-- Polaris catalog with OAuth2 client credentials
-- AWS S3 bucket and IAM credentials with read access
+- StarRocks 4.1.6 (pinned in `docker-compose.yml`)
+- Polaris catalog principal (OAuth2 client credentials), created with
+  `POST https://<tenant-domain>/service/offloading/api/v1/principals/<NAME>`
+  (needs `ROLE_OFFLOADING_ADMIN` or `ROLE_TENANT_ADMIN`; the secret is returned only once)
 
 ## Setup
 
@@ -43,6 +45,9 @@ Admin → Databases → Add database → **StarRocks**
 | Password | *(blank)*   |
 
 The native StarRocks driver ([Carbon-Arc/metabase-starrocks-driver](https://github.com/Carbon-Arc/metabase-starrocks-driver)) is baked into the Metabase image automatically via `Dockerfile.metabase`.
+`Dockerfile.metabase` pins Metabase `v0.63.19.1` and driver `v1.2.0` — driver `v1.0.2` fails on
+Metabase 0.63 with `Syntax error compiling at (metabase/driver/starrocks.clj:239:1)`.
+Metabase keeps its own H2 file `metabase-starrocks.db` in the shared `metabase_data` volume.
 
 List available namespaces:
 
@@ -50,13 +55,21 @@ List available namespaces:
 docker exec starrocks mysql -h 127.0.0.1 -P 9030 -u root -e "SHOW DATABASES FROM polaris;"
 ```
 
-Query Iceberg tables (backtick-quote mixed-case names):
+Query Iceberg tables. Mixed-case names keep their case and are matched case-insensitively,
+so both of these work; backticks are only required for names with special characters such as `-`:
 
 ```sql
-SELECT * FROM polaris.cdc_measurement.`c8y_Temperature`
+SELECT * FROM polaris.cdc_measurement.`c8y_Temperature`;
+SELECT * FROM polaris.cdc_measurement.c8y_temperature;
+SELECT * FROM polaris.cdc_measurement.`cgroup-mosquitto`;
 ```
 
-> **Known limitation:** Namespaces or tables whose name **starts with `view`** cannot be queried from StarRocks due to a parser conflict with the SQL `VIEW` keyword. Rename them in Polaris (e.g. `view_measurement` → `measurement_view`) to work around this.
+The `view_*` namespaces hold Iceberg views with flattened columns and are queryable
+since StarRocks 4.1 (earlier versions failed on names starting with `view`):
+
+```sql
+SELECT * FROM polaris.view_measurement.`c8y_serverResponseTime`;
+```
 
 ---
 
@@ -76,9 +89,14 @@ starrocks/                        ← work from this directory
 
 | Container    | Heap / Limit    |
 |--------------|-----------------|
-| StarRocks FE | 800 MB JVM      |
-| StarRocks BE | 1.5 GB / 3 GB   |
+| StarRocks FE | 1 GB JVM heap (`fe.conf`; the image default is 8 GB) |
+| StarRocks BE | 1.5 GB (`be.conf`, `mem_limit = 1500M` — the unit is `M`, `MB` crashes the BE) |
 | Metabase     | 1.5 GB / 2 GB   |
+
+`fe.conf` and `be.conf` are the image's own files with only these memory settings changed;
+they are mounted over the defaults. Give the Docker VM at least 6 GB
+(`colima start --memory 6`) — with 2 GB the FE is OOM-killed while the container still
+reports healthy.
 
 ## Configuration Notes
 
@@ -86,8 +104,10 @@ starrocks/                        ← work from this directory
 `POLARIS_CLIENT_CREDENTIAL` = `CLIENT_ID:CLIENT_SECRET`.  
 The token endpoint is auto-derived as `{POLARIS_URI}/v1/oauth/tokens`.
 
-### S3 — No Credential Vending
-AWS keys are set directly on the external catalog (`iceberg.catalog.vended-credentials-enabled=false`). No IAM role or credential vending required.
+### S3 — Credential Vending
+No AWS keys are configured. With `iceberg.catalog.vended-credentials-enabled=true`, Polaris
+assumes the data lake's IAM role and returns STS credentials scoped to each table's location;
+StarRocks refreshes them in the background. Only `AWS_REGION` (the bucket's region) is needed.
 
 ## Useful Commands
 
