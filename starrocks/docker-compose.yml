@@ -1,12 +1,15 @@
 services:
   starrocks:
-    image: starrocks/allin1-ubuntu:latest
+    image: starrocks/allin1-ubuntu:4.1.6
     container_name: starrocks
     ports:
       - "8080:8080"   # FE HTTP (allin1 default)
       - "9030:9030"   # FE MySQL protocol (Metabase connects here)
     volumes:
       - starrocks_data:/opt/starrocks/be/storage
+      # Image defaults with smaller memory settings (the image's FE heap is 8 GB)
+      - ./fe.conf:/data/deploy/starrocks/fe/conf/fe.conf:ro
+      - ./be.conf:/data/deploy/starrocks/be/conf/be.conf:ro
     mem_limit: 3g
     healthcheck:
       # allin1 image runs FE HTTP on 8080 by default
@@ -29,8 +32,6 @@ services:
       - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
       - POLARIS_CLIENT_CREDENTIAL=${POLARIS_CLIENT_CREDENTIAL}
       - POLARIS_SCOPE=${POLARIS_SCOPE}
-      - AWS_ACCESS_KEY=${AWS_ACCESS_KEY}
-      - AWS_SECRET_KEY=${AWS_SECRET_KEY}
       - AWS_REGION=${AWS_REGION}
     entrypoint: ["/bin/bash", "/init/init-catalog.sh"]
     restart: "no"
@@ -46,7 +47,8 @@ services:
     environment:
       - JAVA_OPTS=-Xmx1500m
       - MB_DB_TYPE=h2
-      - MB_DB_FILE=/metabase-data/metabase.db
+      # Own H2 file per engine; the pre-vending DB stays at /metabase-data/metabase.db
+      - MB_DB_FILE=/metabase-data/metabase-starrocks.db
     volumes:
       - metabase_data:/metabase-data
     depends_on:
