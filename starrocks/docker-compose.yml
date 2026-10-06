@@ -6,7 +6,9 @@ services:
       - "8080:8080"   # FE HTTP (allin1 default)
       - "9030:9030"   # FE MySQL protocol (Metabase connects here)
     volumes:
-      - starrocks_data:/opt/starrocks/be/storage
+      # FE metadata and BE storage persist the internal measurements DB (lookup MV)
+      - fe_meta:/data/deploy/starrocks/fe/meta
+      - be_storage:/data/deploy/starrocks/be/storage
       # Image defaults with smaller memory settings (the image's FE heap is 8 GB)
       - ./fe.conf:/data/deploy/starrocks/fe/conf/fe.conf:ro
       - ./be.conf:/data/deploy/starrocks/be/conf/be.conf:ro
@@ -58,7 +60,29 @@ services:
         condition: service_completed_successfully
     mem_limit: 2g
 
+  grafana:
+    image: grafana/grafana:13.2.3
+    container_name: grafana
+    ports:
+      - "3001:3000"   # 3000 is Metabase
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/measurements.json
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      starrocks:
+        condition: service_healthy
+    mem_limit: 768m
+
 volumes:
-  starrocks_data:
+  fe_meta:
+  be_storage:
+  grafana_data:
   metabase_data:
     name: metabase_data   # shared name so Metabase data persists when switching engines

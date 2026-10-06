@@ -1,0 +1,14 @@
+# StarRocks speaks the MySQL protocol, so Grafana's built-in MySQL data source is used.
+apiVersion: 1
+datasources:
+  - name: StarRocks
+    uid: starrocks
+    type: mysql
+    url: starrocks:9030
+    user: root
+    isDefault: true
+    jsonData:
+      database: measurements   # lookup view; Polaris tables are addressed as polaris.<ns>.<table>
+      maxOpenConns: 10
+    secureJsonData:
+      password: ""

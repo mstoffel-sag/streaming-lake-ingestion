@@ -1,0 +1,275 @@
+{
+  "uid": "c8y-measurements",
+  "title": "Measurements",
+  "description": "Pick a device, then one or more of its series. Device/series lists come from the StarRocks view measurements.device_series (refreshed every 10 min); the panels read measurements.series_values, which only scans the tables of the selected series.",
+  "tags": [
+    "cumulocity",
+    "starrocks"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": {
+          "type": "mysql",
+          "uid": "starrocks"
+        },
+        "query": "SELECT DISTINCT device AS __text, device_id AS __value FROM measurements.device_series ORDER BY device",
+        "definition": "SELECT DISTINCT device AS __text, device_id AS __value FROM measurements.device_series ORDER BY device",
+        "refresh": 1,
+        "sort": 0
+      },
+      {
+        "name": "series",
+        "label": "Series",
+        "type": "query",
+        "datasource": {
+          "type": "mysql",
+          "uid": "starrocks"
+        },
+        "query": "SELECT metric FROM measurements.device_series WHERE device_id = '${device}' ORDER BY metric",
+        "definition": "SELECT metric FROM measurements.device_series WHERE device_id = '${device}' ORDER BY metric",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Selected series",
+      "description": "All selected series on one axis. Series with different scales: see the per-series charts below.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "mysql",
+        "uid": "starrocks"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval),\n       CASE WHEN unit IS NULL OR unit = '' THEN metric ELSE CONCAT(metric, ' (', unit, ')') END AS metric,\n       AVG(value) AS value\nFROM measurements.series_values\nWHERE source = '${device}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "In the selected time range",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "mysql",
+        "uid": "starrocks"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT metric AS `Series`, MAX(unit) AS `Unit`,\n       MAX_BY(value, time) AS `Latest`, MIN(value) AS `Min`,\n       AVG(value) AS `Average`, MAX(value) AS `Max`,\n       COUNT(*) AS `Measurements`\nFROM measurements.series_values\nWHERE source = '${device}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY metric\nORDER BY metric"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Measurements"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Latest values",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "mysql",
+        "uid": "starrocks"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT time AS `Time`, metric AS `Series`, value AS `Value`, unit AS `Unit`\nFROM measurements.series_values\nWHERE source = '${device}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nORDER BY time DESC\nLIMIT 200"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "All series of this device",
+      "gridPos": {
+        "x": 10,
+        "y": 18,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "mysql",
+        "uid": "starrocks"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT metric AS `Series`, unit AS `Unit`, measurements AS `Measurements`,\n       first_time AS `First`, last_time AS `Last`\nFROM measurements.device_series\nWHERE device_id = '${device}'\nORDER BY metric"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "One chart per series",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "${series}",
+      "repeat": "series",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "mysql",
+        "uid": "starrocks"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroupAlias(time, $__interval),\n       CASE WHEN unit IS NULL OR unit = '' THEN metric ELSE CONCAT(metric, ' (', unit, ')') END AS metric,\n       AVG(value) AS value\nFROM measurements.series_values\nWHERE source = '${device}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    }
+  ]
+}
