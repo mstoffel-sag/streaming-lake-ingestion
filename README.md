@@ -1,7 +1,14 @@
-# Streaming Lake Ingestion
+# Streaming Lake Ingestion — connection examples
 
-Query the Apache Iceberg tables that Cumulocity offloads to a [Polaris](https://polaris.apache.org/)
-catalog. Every solution uses Polaris **credential vending**: Polaris assumes the data lake's IAM
+Examples of how to connect query engines and data platforms to
+[Cumulocity Streaming Lake Ingestion](https://cumulocity.com/docs/datahub/streaming-lake-ingestion/#overview).
+Streaming Lake Ingestion continuously writes a tenant's inventory, measurements, events, alarms
+and operations as Apache Iceberg tables to a data lake and exposes them through an Iceberg REST
+catalog ([Polaris](https://polaris.apache.org/)). Each directory below shows one way to read that
+catalog, from local Docker stacks with Grafana dashboards to Snowflake and Databricks.
+
+These are examples, not production setups: they are tested against one tenant and tuned for a
+laptop. Every example uses Polaris **credential vending**: Polaris assumes the data lake's IAM
 role and hands out short-lived S3 credentials per table, so no AWS keys are configured anywhere.
 
 | Directory | Engine | Dashboards |
