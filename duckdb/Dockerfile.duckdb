@@ -1,0 +1,39 @@
+FROM debian:trixie-slim AS duckdb
+
+# Same 1.5 line as the Grafana plugin (Dockerfile.grafana bundles 1.5.4), so it can open the files
+ARG DUCKDB_VERSION=v1.5.6
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl unzip ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ARCH=$(uname -m); \
+    case "$ARCH" in \
+        aarch64) DUCKDB_ARCH=arm64 ;; \
+        x86_64)  DUCKDB_ARCH=amd64 ;; \
+        *) echo "Unsupported architecture: $ARCH" && exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/duckdb.zip \
+        "https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/duckdb_cli-linux-${DUCKDB_ARCH}.zip" && \
+    unzip /tmp/duckdb.zip -d /usr/local/bin && \
+    rm /tmp/duckdb.zip && \
+    chmod +x /usr/local/bin/duckdb
+
+# Pre-install the iceberg + httpfs extensions into the image so init runs offline-friendly.
+RUN duckdb -c "INSTALL iceberg; INSTALL httpfs;"
+
+WORKDIR /data
+
+
+FROM duckdb AS duckdb-init
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages duckdb==1.5.6 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY init/init-catalog.sh /init/init-catalog.sh
+COPY init/measurement_views.py /init/measurement_views.py
+RUN chmod +x /init/init-catalog.sh
+
+ENTRYPOINT ["/bin/bash", "/init/init-catalog.sh"]

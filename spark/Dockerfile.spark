@@ -1,0 +1,19 @@
+FROM apache/spark:4.1.3
+
+USER root
+
+# Iceberg Spark runtime (REST catalog) plus the AWS bundle, which provides the
+# AWS SDK v2 that S3FileIO needs (the Spark image has none).
+ARG ICEBERG_VERSION=1.12.0
+ARG RUNTIME=iceberg-spark-runtime-4.1_2.13
+ARG MAVEN=https://repo1.maven.org/maven2/org/apache/iceberg
+RUN curl -fsSL -o /opt/spark/jars/${RUNTIME}-${ICEBERG_VERSION}.jar \
+        "${MAVEN}/${RUNTIME}/${ICEBERG_VERSION}/${RUNTIME}-${ICEBERG_VERSION}.jar" \
+    && curl -fsSL -o /opt/spark/jars/iceberg-aws-bundle-${ICEBERG_VERSION}.jar \
+        "${MAVEN}/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar"
+
+COPY init/entrypoint.sh /opt/spark/init/entrypoint.sh
+RUN chmod +x /opt/spark/init/entrypoint.sh
+
+USER spark
+ENTRYPOINT ["/opt/spark/init/entrypoint.sh"]

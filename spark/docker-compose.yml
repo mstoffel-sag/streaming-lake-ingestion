@@ -1,0 +1,24 @@
+services:
+  spark-thrift:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    container_name: spark-thrift
+    ports:
+      - "10000:10000"   # HiveServer2 / Thrift Server (JDBC: jdbc:hive2://localhost:10000)
+      - "4040:4040"     # Spark Web UI
+    environment:
+      - POLARIS_URI=${POLARIS_URI}
+      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
+      - POLARIS_CLIENT_CREDENTIAL=${POLARIS_CLIENT_CREDENTIAL}
+      - POLARIS_SCOPE=${POLARIS_SCOPE}
+      - POLARIS_OAUTH2_SERVER_URI=${POLARIS_OAUTH2_SERVER_URI}
+      - AWS_REGION=${AWS_REGION}
+    mem_limit: 3g
+    healthcheck:
+      # Check that the Thrift Server is accepting connections on port 10000
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10000' 2>/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s

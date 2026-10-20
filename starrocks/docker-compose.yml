@@ -4,7 +4,7 @@ services:
     container_name: starrocks
     ports:
       - "8080:8080"   # FE HTTP (allin1 default)
-      - "9030:9030"   # FE MySQL protocol (Metabase connects here)
+      - "9030:9030"   # FE MySQL protocol (Grafana connects here)
     volumes:
       # FE metadata and BE storage persist the internal measurements DB (lookup MV)
       - fe_meta:/data/deploy/starrocks/fe/meta
@@ -22,7 +22,7 @@ services:
       start_period: 90s
 
   starrocks-init:
-    image: mysql:8.0
+    image: mysql:8.4
     container_name: starrocks-init
     depends_on:
       starrocks:
@@ -38,33 +38,11 @@ services:
     entrypoint: ["/bin/bash", "/init/init-catalog.sh"]
     restart: "no"
 
-  metabase:
-    build:
-      context: .
-      dockerfile: Dockerfile.metabase
-    platform: linux/arm64
-    container_name: metabase
-    ports:
-      - "3000:3000"
-    environment:
-      - JAVA_OPTS=-Xmx1500m
-      - MB_DB_TYPE=h2
-      # Own H2 file per engine; the pre-vending DB stays at /metabase-data/metabase.db
-      - MB_DB_FILE=/metabase-data/metabase-starrocks.db
-    volumes:
-      - metabase_data:/metabase-data
-    depends_on:
-      starrocks:
-        condition: service_healthy
-      starrocks-init:
-        condition: service_completed_successfully
-    mem_limit: 2g
-
   grafana:
-    image: grafana/grafana:13.2.3
+    image: grafana/grafana:13.2.4
     container_name: grafana
     ports:
-      - "3001:3000"   # 3000 is Metabase
+      - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
@@ -84,5 +62,3 @@ volumes:
   fe_meta:
   be_storage:
   grafana_data:
-  metabase_data:
-    name: metabase_data   # shared name so Metabase data persists when switching engines

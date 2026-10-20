@@ -1,6 +1,6 @@
 # Secrets
 starrocks/.env
-
+.env
 # macOS
 .DS_Store
 
@@ -11,3 +11,6 @@ docker-compose.override.yml
 .idea/
 .vscode/
 *.iml
+
+# Python
+__pycache__/

@@ -1,0 +1,293 @@
+{
+  "uid": "c8y-measurements",
+  "title": "Measurements",
+  "description": "Pick a device, then one or more of its series. Device/series lists come from the StarRocks view measurements.device_series (refreshed every 10 min); the panels read measurements.series_values, which only scans the tables of the selected series.",
+  "tags": [
+    "cumulocity",
+    "starrocks"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "1m",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": {
+          "type": "motherduck-duckdb-datasource",
+          "uid": "duckdb"
+        },
+        "query": "SELECT DISTINCT device AS __text, device_id AS __value FROM measurements.device_series ORDER BY device",
+        "definition": "SELECT DISTINCT device AS __text, device_id AS __value FROM measurements.device_series ORDER BY device",
+        "refresh": 1,
+        "sort": 0
+      },
+      {
+        "name": "series",
+        "label": "Series",
+        "type": "query",
+        "datasource": {
+          "type": "motherduck-duckdb-datasource",
+          "uid": "duckdb"
+        },
+        "query": "SELECT metric FROM measurements.device_series WHERE device_id = '${device:raw}' ORDER BY metric",
+        "definition": "SELECT metric FROM measurements.device_series WHERE device_id = '${device:raw}' ORDER BY metric",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Selected series",
+      "description": "All selected series on one axis. Series with different scales: see the per-series charts below.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SET VARIABLE series_query = (SELECT string_agg(sql, ' UNION ALL ') FROM measurements.series_sql\n                             WHERE metric IN (${series:sqlstring}));\nSELECT time_bucket(to_milliseconds($__interval_ms), time) AS time,\n       CASE WHEN unit IS NULL OR unit = '' THEN metric ELSE CONCAT(metric, ' (', unit, ')') END AS metric,\n       AVG(value) AS value\nFROM query(getvariable('series_query'))\nWHERE source = '${device:raw}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "displayName": "${__field.labels.metric}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "In the selected time range",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 1,
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SET VARIABLE series_query = (SELECT string_agg(sql, ' UNION ALL ') FROM measurements.series_sql\n                             WHERE metric IN (${series:sqlstring}));\nSELECT metric AS \"Series\", MAX(unit) AS \"Unit\",\n       MAX_BY(value, time) AS \"Latest\", MIN(value) AS \"Min\",\n       AVG(value) AS \"Average\", MAX(value) AS \"Max\",\n       COUNT(*) AS \"Measurements\"\nFROM query(getvariable('series_query'))\nWHERE source = '${device:raw}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY metric\nORDER BY metric"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Measurements"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Latest values",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 1,
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SET VARIABLE series_query = (SELECT string_agg(sql, ' UNION ALL ') FROM measurements.series_sql\n                             WHERE metric IN (${series:sqlstring}));\nSELECT time AS \"Time\", metric AS \"Series\", value AS \"Value\", unit AS \"Unit\"\nFROM query(getvariable('series_query'))\nWHERE source = '${device:raw}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nORDER BY time DESC\nLIMIT 200"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Value"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "All series of this device",
+      "gridPos": {
+        "x": 10,
+        "y": 18,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 1,
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT metric AS \"Series\", unit AS \"Unit\", measurements AS \"Measurements\",\n       first_time AS \"First\", last_time AS \"Last\"\nFROM measurements.device_series\nWHERE device_id = '${device:raw}'\nORDER BY metric"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "One chart per series",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "${series}",
+      "repeat": "series",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "motherduck-duckdb-datasource",
+        "uid": "duckdb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": 0,
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SET VARIABLE series_query = (SELECT string_agg(sql, ' UNION ALL ') FROM measurements.series_sql\n                             WHERE metric IN (${series:sqlstring}));\nSELECT time_bucket(to_milliseconds($__interval_ms), time) AS time,\n       CASE WHEN unit IS NULL OR unit = '' THEN metric ELSE CONCAT(metric, ' (', unit, ')') END AS metric,\n       AVG(value) AS value\nFROM query(getvariable('series_query'))\nWHERE source = '${device:raw}'\n  AND metric IN (${series:sqlstring})\n  AND $__timeFilter(time)\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "displayName": "${__field.labels.metric}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    }
+  ]
+}

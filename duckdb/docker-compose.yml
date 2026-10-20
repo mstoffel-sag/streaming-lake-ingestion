@@ -1,0 +1,78 @@
+services:
+  duckdb:
+    build:
+      context: .
+      dockerfile: Dockerfile.duckdb
+      target: duckdb
+    container_name: duckdb
+    volumes:
+      - duckdb_data:/data
+      - duckdb_home:/root/.duckdb
+    # Keep the container alive so `docker exec -it duckdb duckdb -init /data/duckdbrc.sql` works.
+    command: ["tail", "-f", "/dev/null"]
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD-SHELL", "duckdb -c 'SELECT 1' > /dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  duckdb-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.duckdb
+      target: duckdb-init
+    container_name: duckdb-init
+    depends_on:
+      duckdb:
+        condition: service_healthy
+    volumes:
+      - duckdb_data:/data
+      - duckdb_home:/root/.duckdb
+    environment:
+      - POLARIS_URI=${POLARIS_URI}
+      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
+      - POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID}
+      - POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET}
+      - POLARIS_SCOPE=${POLARIS_SCOPE}
+      - POLARIS_OAUTH2_SERVER_URI=${POLARIS_OAUTH2_SERVER_URI}
+    restart: "no"
+
+  grafana:
+    build:
+      context: .
+      dockerfile: Dockerfile.grafana
+    container_name: grafana-duckdb
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/measurements.json
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # The plugin runs queries one at a time; after a start the first dashboard load
+      # (Iceberg metadata not cached yet) can queue past Grafana's default 30 s.
+      - GF_DATAPROXY_TIMEOUT=120
+      # Used by the data source's init SQL (grafana/provisioning/datasources/duckdb.yaml)
+      - POLARIS_URI=${POLARIS_URI}
+      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
+      - POLARIS_CLIENT_ID=${POLARIS_CLIENT_ID}
+      - POLARIS_CLIENT_SECRET=${POLARIS_CLIENT_SECRET}
+      - POLARIS_SCOPE=${POLARIS_SCOPE}
+      - POLARIS_OAUTH2_SERVER_URI=${POLARIS_OAUTH2_SERVER_URI}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - duckdb_data:/duckdb-data:ro
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      duckdb-init:
+        condition: service_completed_successfully
+    mem_limit: 1g
+
+volumes:
+  duckdb_data:
+  duckdb_home:
+  grafana_data:

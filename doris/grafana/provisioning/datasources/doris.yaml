@@ -1,0 +1,14 @@
+# Doris speaks the MySQL protocol, so Grafana's built-in MySQL data source is used.
+apiVersion: 1
+datasources:
+  - name: Doris
+    uid: doris
+    type: mysql
+    url: fe:9030
+    user: root
+    isDefault: true
+    jsonData:
+      database: measurements   # lookup views; Polaris tables are addressed as polaris.<ns>.<table>
+      maxOpenConns: 10
+    secureJsonData:
+      password: ""

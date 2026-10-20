@@ -1,0 +1,99 @@
+networks:
+  doris:
+    ipam:
+      config:
+        - subnet: 172.30.80.0/24   # FE_SERVERS / BE_ADDR need fixed addresses
+          ip_range: 172.30.80.128/25   # dynamic addresses (init, Grafana) stay clear of FE/BE
+
+services:
+  fe:
+    image: apache/doris:fe-4.1.5
+    container_name: doris-fe
+    hostname: fe
+    # The image's fe.conf sets an 8 GB heap; lower it in place, then run the image's entrypoint.
+    entrypoint: ["bash", "-c", "sed -i 's/-Xmx8192m -Xms8192m/-Xmx1024m -Xms1024m/' /opt/apache-doris/fe/conf/fe.conf && cd /usr/local/bin && exec bash init_fe.sh"]
+    ports:
+      - "8030:8030"   # FE HTTP / web UI
+      - "9030:9030"   # MySQL protocol (Grafana connects here)
+    environment:
+      - FE_SERVERS=fe1:172.30.80.2:9010
+      - FE_ID=1
+    volumes:
+      - fe_meta:/opt/apache-doris/fe/doris-meta
+    networks:
+      doris:
+        ipv4_address: 172.30.80.2
+    mem_limit: 1600m
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -P 9030 -u root -e 'SHOW FRONTENDS' > /dev/null 2>&1 || exit 1  # SELECT needs a BE"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  be:
+    image: apache/doris:be-4.1.5
+    container_name: doris-be
+    hostname: be
+    # Smaller JNI heap and an explicit memory limit (the default is a share of the host's RAM).
+    # init_be.sh sets SKIP_CHECK_ULIMIT=true, so vm.max_map_count < 2000000 is fine.
+    entrypoint: ["bash", "-c", "c=/opt/apache-doris/be/conf/be.conf; sed -i 's/-Xmx2048m/-Xmx512m/' $$c; grep -q '^mem_limit' $$c || echo 'mem_limit = 3G' >> $$c; cd /usr/local/bin && exec bash entry_point.sh"]
+    environment:
+      - FE_SERVERS=fe1:172.30.80.2:9010
+      - BE_ADDR=172.30.80.3:9050
+    volumes:
+      - be_storage:/opt/apache-doris/be/storage
+    networks:
+      doris:
+        ipv4_address: 172.30.80.3
+    depends_on:
+      fe:
+        condition: service_healthy
+    mem_limit: 3500m
+
+  doris-init:
+    image: mysql:8.4
+    container_name: doris-init
+    depends_on:
+      fe:
+        condition: service_healthy
+    volumes:
+      - ./init:/init:ro
+    environment:
+      - POLARIS_URI=${POLARIS_URI}
+      - POLARIS_WAREHOUSE=${POLARIS_WAREHOUSE}
+      - POLARIS_CLIENT_CREDENTIAL=${POLARIS_CLIENT_CREDENTIAL}
+      - POLARIS_SCOPE=${POLARIS_SCOPE}
+      - POLARIS_OAUTH2_SERVER_URI=${POLARIS_OAUTH2_SERVER_URI}
+      - AWS_REGION=${AWS_REGION}
+    entrypoint: ["/bin/bash", "/init/init-catalog.sh"]
+    networks:
+      - doris
+    restart: "no"
+
+  grafana:
+    image: grafana/grafana:13.2.4
+    container_name: grafana-doris
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/measurements.json
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    networks:
+      - doris
+    depends_on:
+      doris-init:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+volumes:
+  fe_meta:
+  be_storage:
+  grafana_data:

@@ -1,0 +1,20 @@
+# The DuckDB plugin is a glibc binary, so the Ubuntu image is required (not Alpine).
+FROM grafana/grafana:13.2.4-ubuntu
+
+# v0.4.5 bundles DuckDB 1.5.4 (keep Dockerfile.duckdb on the same version)
+ARG PLUGIN_VERSION=0.4.5
+ARG PLUGIN_URL=https://github.com/motherduckdb/grafana-duckdb-datasource/releases/download/v${PLUGIN_VERSION}/motherduck-duckdb-datasource-${PLUGIN_VERSION}.zip
+
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /opt/grafana-plugins \
+    && curl -fsSL -o /tmp/plugin.zip "${PLUGIN_URL}" \
+    && unzip -q /tmp/plugin.zip -d /opt/grafana-plugins/motherduck-duckdb-datasource \
+    && rm /tmp/plugin.zip \
+    && chown -R grafana /opt/grafana-plugins
+USER grafana
+
+# Outside /var/lib/grafana, so the grafana_data volume doesn't hide it
+ENV GF_PATHS_PLUGINS=/opt/grafana-plugins \
+    GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=motherduck-duckdb-datasource

@@ -1,0 +1,29 @@
+# In-memory DuckDB per Grafana; the init SQL attaches the Polaris catalog (vended
+# S3 credentials) and the measurement views built by init/measurement_views.py.
+# ${...} are filled from the container environment when Grafana provisions this file.
+apiVersion: 1
+datasources:
+  - name: DuckDB
+    uid: duckdb
+    type: motherduck-duckdb-datasource
+    isDefault: true
+    jsonData:
+      path: ""
+      initSql: |
+        SET GLOBAL home_directory = '/var/lib/grafana';  -- extensions go to ~/.duckdb; the plugin has no $HOME
+        INSTALL avro; LOAD avro;  -- iceberg would auto-install it, ignoring home_directory
+        INSTALL iceberg; LOAD iceberg; INSTALL httpfs; LOAD httpfs;
+        SET GLOBAL s3_url_style = 'path';  -- virtual-hosted URLs fail TLS for dotted bucket names; GLOBAL: the plugin uses several connections
+        CREATE OR REPLACE SECRET polaris_oauth (
+            TYPE ICEBERG,
+            CLIENT_ID '${POLARIS_CLIENT_ID}',
+            CLIENT_SECRET '${POLARIS_CLIENT_SECRET}',
+            OAUTH2_SERVER_URI '${POLARIS_OAUTH2_SERVER_URI}',
+            OAUTH2_SCOPE '${POLARIS_SCOPE}'
+        );
+        ATTACH IF NOT EXISTS '${POLARIS_WAREHOUSE}' AS polaris (
+            TYPE ICEBERG,
+            ENDPOINT '${POLARIS_URI}',
+            ACCESS_DELEGATION_MODE 'vended_credentials'
+        );
+        ATTACH IF NOT EXISTS '/duckdb-data/measurements.duckdb' AS measurements (READ_ONLY);
