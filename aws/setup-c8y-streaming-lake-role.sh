@@ -58,7 +58,8 @@ ROLE_NAME="c8y-streaming-lake-ingestion-${ROLE_SUFFIX}"
 POLICY_NAME="c8y-streaming-lake-ingestion"
 
 if [[ -z "$EXTERNAL_ID" ]]; then
-  EXTERNAL_ID="c8y-$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 40)"
+  # tr dies of SIGPIPE once head has enough; under pipefail that would abort the script.
+  EXTERNAL_ID="c8y-$(LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 40 || true)"
   GENERATED=1
 fi
 if [[ ${#EXTERNAL_ID} -lt 32 || ! "$EXTERNAL_ID" =~ ^[A-Za-z0-9_+=,.@:/-]+$ ]]; then
