@@ -14,6 +14,8 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 
 1. Run `Edit_Secrets.py` and fill in the Polaris values.
 2. Run one of the import notebooks; schedule it as a job for continuous import.
+   Set the `catalog` and `schema` parameters to choose where the Delta tables go
+   (the schema is created if missing); leave them empty to use the compute's defaults.
 
 ## How the import works
 
