@@ -21,16 +21,22 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 
 Per table:
 1. **Snapshot check:** if the Iceberg snapshot ID matches the last import (`_iceberg_snapshot_tracking`), skip the table.
-2. **Read new rows** between the last imported timestamp (`time`, `lastUpdated` or `creationTime`) and now; tables without a time column are overwritten.
+2. **Choose the read:**
+   - Table has delete files (upsert tables such as `latest_inventory.*`): read the whole table with
+     position and equality deletes applied, then overwrite.
+   - Only appends (or compactions) since the last imported snapshot: read just the data files those
+     snapshots added, then append. Progress follows Iceberg snapshots, not event time, so late
+     measurements and alarm updates are picked up.
+   - Otherwise (first import, expired snapshot, overwrite/delete commits): full read, overwrite.
 3. **Flatten** nested columns (lists/complex types become JSON), add a unique `row_id`.
 4. **Write** to Delta (append with `mergeSchema`, or overwrite), store snapshot ID and sequence number.
-5. Ensure `PRIMARY KEY (row_id)` on every target table.
+5. Ensure `PRIMARY KEY (row_id)` on every target table. The run fails if any table failed to import.
 
 ## PyIceberg vs. DuckDB
 
 - **PyIceberg** applies Iceberg delete files, so updated or deleted source rows are handled
-  correctly. Only if a table has equality deletes PyIceberg can't merge does it fall back to
-  reading new files directly.
+  correctly. PyIceberg itself can't plan scans with equality deletes; the notebook builds the
+  scan tasks and applies equality deletes by sequence number (table-wide, not per partition).
 - **DuckDB** always reads new data files directly and ignores delete files. Faster for large
   append-only tables, but can re-import deleted or superseded rows. Use it only for append-only data.
 
