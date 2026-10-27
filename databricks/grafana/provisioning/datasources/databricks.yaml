@@ -1,0 +1,19 @@
+# Community Databricks plugin against the SQL warehouse, OAuth M2M as a service principal.
+# ${...} are filled from the container environment when Grafana provisions this file.
+apiVersion: 1
+datasources:
+  - name: Databricks
+    uid: databricks
+    type: mullerpeter-databricks-datasource
+    isDefault: true
+    jsonData:
+      hostname: ${DATABRICKS_HOST}
+      path: ${DATABRICKS_HTTP_PATH}
+      port: "443"
+      authenticationMethod: m2m
+      clientId: ${DATABRICKS_CLIENT_ID}
+      timeInterval: 1m
+      maxOpenConns: "10"
+      maxIdleConns: "2"
+    secureJsonData:
+      clientSecret: ${DATABRICKS_CLIENT_SECRET}

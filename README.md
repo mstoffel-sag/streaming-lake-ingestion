@@ -18,10 +18,10 @@ role and hands out short-lived S3 credentials per table, so no AWS keys are conf
 | `duckdb/` | DuckDB 1.5.6 `iceberg` extension ([README](duckdb/README.md)) | Grafana (DuckDB plugin) |
 | `spark/` | Spark 4.1.3 Thrift Server + Iceberg 1.12.0 ([README](spark/README.md)) | none (JDBC only) |
 | `snowflake/` | Snowflake catalog-linked database ([README](snowflake/README.md)) | — |
-| `databricks/` | Incremental import into Delta ([README](databricks/README.md)) | — |
+| `databricks/` | Incremental import into Delta ([README](databricks/README.md)) | Grafana (community Databricks plugin, SQL warehouse) |
 | `aws/` | `setup-c8y-streaming-lake-role.sh`: S3 bucket and IAM role for an own data lake | — |
 
-`starrocks/`, `doris/` and `duckdb/` all serve Grafana on port 3000; run one of them at a time.
+`starrocks/`, `doris/`, `duckdb/` and `databricks/grafana/` all serve Grafana on port 3000 (`databricks/grafana/`: `GRAFANA_PORT`); run one of them at a time.
 
 ## Engine comparison
 

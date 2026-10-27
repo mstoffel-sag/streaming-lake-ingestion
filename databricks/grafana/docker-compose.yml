@@ -1,0 +1,25 @@
+services:
+  grafana:
+    build: .
+    container_name: grafana-databricks
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/measurements.json
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Read by provisioning/datasources/databricks.yaml
+      - DATABRICKS_HOST=${DATABRICKS_HOST:?set DATABRICKS_HOST in .env}
+      - DATABRICKS_HTTP_PATH=${DATABRICKS_HTTP_PATH:?set DATABRICKS_HTTP_PATH in .env}
+      - DATABRICKS_CLIENT_ID=${DATABRICKS_CLIENT_ID:?set DATABRICKS_CLIENT_ID in .env}
+      - DATABRICKS_CLIENT_SECRET=${DATABRICKS_CLIENT_SECRET:?set DATABRICKS_CLIENT_SECRET in .env}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/etc/grafana/dashboards:ro
+    mem_limit: 768m
+
+volumes:
+  grafana_data:
