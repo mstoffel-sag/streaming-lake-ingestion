@@ -45,36 +45,76 @@ Per table:
 
 `grafana/` runs Grafana locally against the Databricks SQL warehouse with the community
 [Databricks data source](https://github.com/mullerpeter/databricks-grafana) (Grafana's own
-Databricks plugin needs Enterprise or Cloud). It signs in as a service principal (OAuth M2M) and
-provisions the **Cumulocity / Measurements (Databricks)** dashboard: pick a device, then one or more
-series.
+Databricks plugin needs Enterprise or Cloud). Grafana signs in as a service principal (OAuth M2M)
+and shows the **Cumulocity / Measurements (Databricks)** dashboard: pick a device, then one or more
+of its measurement series.
 
 ```
-Grafana (port GRAFANA_PORT, default 3000)  [mullerpeter-databricks-datasource]
-    └── SQL warehouse  (OAuth M2M, service principal)
+Grafana (localhost:GRAFANA_PORT)  [mullerpeter-databricks-datasource]
+    └── SQL warehouse  (OAuth M2M as a service principal)
             └── grafana_series_values / grafana_device_series  →  cdc_measurement_* Delta tables
 ```
 
-Setup:
-1. Service principal with an OAuth secret, and grants:
+The import job must already be running (see Setup above). Creating the service principal and its
+secret needs a workspace admin.
+
+### 1. In Databricks
+
+1. **Service principal.** *Settings → Identity and access → Service principals → Add service
+   principal → Add new* (e.g. `grafana-cumulocity`). Keep the *Databricks SQL access* entitlement.
+   Note its **Application ID**.
+2. **OAuth secret.** Open the service principal → *Secrets* → *Generate secret*. Copy the secret
+   right away; it is shown only once.
+3. **Read access.** In the SQL editor (`<application id>` in backticks):
    ```sql
    GRANT USE CATALOG ON CATALOG factory TO `<application id>`;
    GRANT USE SCHEMA, SELECT ON SCHEMA factory.`adhoc-demo_eu-latest-t2180777119` TO `<application id>`;
    ```
-   plus **Can use** on the warehouse.
-2. `python3 grafana/series_views.py` (uses the `c8y-lake` CLI profile; see `--help`). Creates
-   `grafana_series_values` (all series, long format; `metric` is the series name), the view
-   `grafana_device_series_v` and the table `grafana_device_series` materialized from it.
-   Re-run when new measurement types or series appear.
-3. Import `grafana/RefreshGrafanaLookup.py` as a notebook and add it to the import job as a task after
-   the import (`run_if: ALL_DONE`); it rebuilds `grafana_device_series` (~30 s; materialized views
-   would need Pipelines).
-4. `cd grafana && cp .env.example .env` (fill in the client ID and secret), then `docker compose up -d --build`.
+4. **Warehouse.** *SQL Warehouses →* your warehouse *→ Permissions →* add the service principal with
+   **Can use**. On the *Connection details* tab, note **Server hostname** and **HTTP path**.
+5. **Views for the dashboard.** From this folder, with a Databricks CLI profile that may create
+   views in the schema (`databricks auth login --host https://<workspace host> --profile c8y-lake`):
+   ```bash
+   python3 grafana/series_views.py --profile c8y-lake --warehouse <warehouse id>
+   ```
+   This creates `grafana_series_values` (every series in one long view; `metric` is the series
+   name), the view `grafana_device_series_v` and the table `grafana_device_series` materialized from
+   it (device and series lists). Re-run it when new measurement types or series appear; new devices
+   and values are picked up automatically.
+6. **Keep the lists current.** Import `grafana/RefreshGrafanaLookup.py` into the workspace (*Workspace
+   → Import*, next to the import notebook). In the import job, *Add task → Notebook*: that notebook,
+   *Depends on* `import`, *Run if* **All done**. It rebuilds `grafana_device_series` after every import
+   (~30 s on serverless; materialized views would need Pipelines, which this workspace lacks).
 
-Notes:
-- The warehouse auto-stops after 10 idle minutes; dashboard refreshes more frequent than that keep it
-  running. The first query after a stop waits for the warehouse to start.
-- Panels take ≈4–5 s warm (three series, 24 hours); the lookup lists ≈1 s.
+### 2. Start Grafana locally
+
+```bash
+cd grafana
+cp .env.example .env    # fill in hostname, HTTP path, application ID, secret, an admin password
+docker compose up -d --build
+```
+
+`GRAFANA_PORT` in `.env` sets the port (default 3000; the StarRocks, Doris and DuckDB stacks use
+3000 too). The image adds the plugin from its GitHub release; Grafana logs a warning that the plugin
+is unsigned, which is expected.
+
+### 3. Open the dashboard
+
+Open **http://localhost:3000** (or your `GRAFANA_PORT`) and sign in as `admin` with
+`GRAFANA_ADMIN_PASSWORD` from `.env`. The dashboard is the home page (also under *Dashboards →
+Cumulocity*).
+
+- **Device**: all devices with measurements, as `name · id`.
+- **Series**: the selected device's series; starts with the first one, add more as needed. Each
+  series costs one table scan per panel, so pick only what you need.
+- Panels: the selected series in one chart, latest / min / avg / max per series, the latest 200
+  values, all series of the device, and one chart per series below (for series whose scales differ).
+- Default range is the last 6 hours. There is no auto-refresh; use *Refresh* or pick 15m or longer.
+
+### Notes
+
+- The warehouse auto-stops after 10 idle minutes. The first query after a stop waits for it to start
+  (≈20 s); after that panels take ≈4 s. Refreshing more often than every 10 minutes keeps it running.
 - `$__timeFilter` is rendered as UTC literals, matching the warehouse's UTC session time zone.
 - In this workspace `account users` holds ALL PRIVILEGES on the `factory` catalog, so every account
   principal, the Grafana one included, can also write and drop objects there. Keep the secret local.

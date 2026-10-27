@@ -1,4 +1,7 @@
 # Secrets
+# AWS IAM policy documents (account-specific, generated locally)
+aws/*.json
+/*-policy.json
 starrocks/.env
 .env
 # macOS
