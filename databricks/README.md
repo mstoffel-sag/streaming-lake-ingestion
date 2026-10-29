@@ -9,9 +9,9 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 | `IcebergIncrementalImport PyIceberg.ipynb` | Import via PyIceberg scans (**recommended**) |
 | `IcebergIncrementalImport DuckDB.ipynb` | Import via DuckDB `read_parquet` on new data files |
 | `grafana/` | Grafana stack on the SQL warehouse: measurement views, lookup refresh notebook, dashboard (see below) |
-| `bdc_connect.py` | Creates a Delta Share from selected import tables and publishes it as a data product to SAP Business Data Cloud (consumable in SAP Datasphere) |
-| `bdc_tables.py` | Table selection and schema fingerprint of the data product (a workspace file imported by the two notebooks) |
-| `CheckBdcSchema.py` | Decides whether the data product needs a republish (see below) |
+| `sap-bdc/bdc_connect.py` | Creates a Delta Share from selected import tables and publishes it as a data product to SAP Business Data Cloud (consumable in SAP Datasphere) |
+| `sap-bdc/bdc_tables.py` | Table selection and schema fingerprint of the data product (a workspace file imported by the two notebooks) |
+| `sap-bdc/CheckBdcSchema.py` | Decides whether the data product needs a republish (see below) |
 
 ## Setup
 
@@ -64,7 +64,7 @@ tables:
 So a new measurement column (the import appends with `mergeSchema`), a changed type, or a new sewage
 pump fragment table republishes the data product within one import cycle; otherwise nothing runs. To
 force a republish, delete the share's rows from `_bdc_publish_state` or run `bdc_connect` by hand.
-Upload `bdc_tables.py` as a workspace file next to both notebooks.
+Import the three files from `sap-bdc/` into the workspace and upload `bdc_tables.py` as a workspace file next to both notebooks.
 
 `bdc_connect` also removes share tables whose source table no longer matches the selection, which
 removes them from the data product; consumers in Datasphere that use them break.
