@@ -23,7 +23,7 @@ the Snowpark session, so they run as Snowflake Notebooks, not in a local Jupyter
 | Notebook | Purpose |
 |---|---|
 | `cumulocity_build_up.ipynb` | Creates everything for one tenant: warehouse, catalog integration, linked database, curated dynamic tables, measurement series view, schema-change task, optional e-mail alert |
-| `cumulocity_bdc_data_product.ipynb` | Publishes alarms, inventory and sewage pump measurements as a data product to SAP BDC and republishes it on schema changes (see below) |
+| `sap-bdc/cumulocity_bdc_data_product.ipynb` | Publishes alarms, inventory and sewage pump measurements as a data product to SAP BDC and republishes it on schema changes (see below) |
 | `cumulocity_query_examples.ipynb` | Read-only queries: devices, alarms, measurements, events, device timeline |
 | `cumulocity_tear_down.ipynb` | Removes all objects of one tenant, the data product included (irreversible) |
 | `grafana/` | Grafana stack on `CURATED` (see below) |
@@ -56,7 +56,7 @@ series, so a filter on `SERIES` or `FRAGMENT` reads only the matching tables.
 
 ## SAP BDC data product
 
-`cumulocity_bdc_data_product.ipynb` publishes the same content as the Databricks data product
+`sap-bdc/cumulocity_bdc_data_product.ipynb` publishes the same content as the Databricks data product
 (`databricks/bdc_connect.py`) through the native SAP Snowflake mechanism: a Snowflake share
 associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed to
 `SYSTEM$SAP_PUBLISH_DATA_PRODUCT`.
@@ -84,7 +84,7 @@ tables that refresh at most `target_lag` (10 minutes) behind the source.
 2. Check the connector: `SHOW ZEROCOPY CONNECTORS IN ACCOUNT`. SAP creates
    `CONNECTORS.ZEROCOPY.DEFAULT_SAP_BDC_CONNECTOR` when the SAP Snowflake system joins the
    formation; its status must be `CONNECTED`.
-3. In `cumulocity_bdc_data_product.ipynb`, set `catalog_name`, `share_name` and the ORD texts, then
+3. In `sap-bdc/cumulocity_bdc_data_product.ipynb`, set `catalog_name`, `share_name` and the ORD texts, then
    run sections 1 to 4. They create the database, the share and the tables, and change nothing in BDC.
    `bdc_csn_preview` shows the CSN document.
 4. Run section 5. It enables share-back on the connector, adds the share and publishes. BDC extracts
