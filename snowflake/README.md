@@ -7,7 +7,7 @@ credentials vended by Polaris.
 
 ```
 Snowflake (SAP Snowflake account in the BDC formation)
-    ├── CUMULOCITY_BDC_<T>      data product: ALARM, INVENTORY, MEASUREMENT (dynamic Iceberg V3 tables)
+    ├── CUMULOCITY_BDC_<T>      data product: ALARM, INVENTORY, one table per fragment (dynamic Iceberg V3)
     │       └── share ──► Zerocopy Connector ──► SAP BDC catalog
     ├── CUMULOCITY_<T>          CURATED (dynamic tables, series view), OPS (procedures, task graph, alert)
     └── CUMULOCITY_ICEBERG_<T>  catalog-linked, read-only
@@ -65,14 +65,15 @@ associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed
 |---|---|---|---|
 | `ALARM` | `cdc_alarm."alarm"` | alarm, current state | `ID` |
 | `INVENTORY` | `cdc_inventory."inventory"` | managed object, current state (deleted ones excluded) | `ID` |
-| `MEASUREMENT` | every `cdc_measurement."c8y_SewPump_*"` table | measurement value | `MEASUREMENT_KEY` |
+| `SEWPUMP_<FRAGMENT>`, for example `SEWPUMP_WINDINGTEMPC` | one per `cdc_measurement."c8y_SewPump_*"` table (19) | measurement | `ID` |
 
-`MEASUREMENT` is one long-format fact table (`TIME`, `DEVICE_ID`, `FRAGMENT`, `SERIES`, `VALUE`,
-`UNIT`, `MEASUREMENT_ID`) instead of one table per fragment, so a Datasphere Analytic Model can use
-it directly and a new fragment adds rows, not tables. Join `MEASUREMENT.DEVICE_ID` and `ALARM.SOURCE`
-to `INVENTORY.ID`. Column names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects JSON text.
-Differences from the Databricks product: `ALARM` holds the current state per alarm, not the change
-log, and the measurements are one table instead of 19.
+The measurement tables keep the lake layout, as in the Databricks product: one table per fragment,
+one column per series. The table name is the source name without `c8y_`, in upper case. The series
+object becomes the value as `DOUBLE` under the series name (`WINDING_TEMP_C`) and its unit
+(`WINDING_TEMP_C_UNIT`). Join `SOURCE` of the measurement and alarm tables to `INVENTORY.ID`. Column
+names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects in `ALARM` and `INVENTORY` JSON
+text. Difference from the Databricks product: `ALARM` holds the current state per alarm, not the
+change log.
 
 ### 1. In Snowflake and BDC
 
@@ -103,8 +104,9 @@ task graph below the existing schema-change task. All tasks are serverless.
 | `OPS.BDC_CHECK` | after the root | Rebuilds the shared tables when the columns of alarm, inventory or the `c8y_SewPump_*` tables change. Compares an MD5 fingerprint of the shared schema (table, column, type, precision, scale, nullability) with the last publish and returns `changed` or `unchanged` |
 | `OPS.BDC_PUBLISH` | after `BDC_CHECK`, `WHEN` it returned `changed` | Generates the CSN, publishes, stores the fingerprint in `OPS.BDC_STATE` |
 
-A new inventory column changes the CSN and republishes within one cycle. A new sewage pump fragment
-rebuilds `MEASUREMENT` but leaves the CSN as it is, so nothing is republished. To force a
+A new inventory column or sewage pump fragment changes the CSN: the check rebuilds the tables (a new
+fragment gets its own table, a removed one is dropped) and the product is republished within one
+cycle. To force a
 republish, run `CALL CUMULOCITY_<T>.OPS.BDC_PUBLISH()`. BDC accepts a republish under the same
 version 1.0.0.
 
