@@ -10,6 +10,8 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 | `IcebergIncrementalImport DuckDB.ipynb` | Import via DuckDB `read_parquet` on new data files |
 | `grafana/` | Grafana stack on the SQL warehouse: measurement views, lookup refresh notebook, dashboard (see below) |
 | `bdc_connect.py` | Creates a Delta Share from selected import tables and publishes it as a data product to SAP Business Data Cloud (consumable in SAP Datasphere) |
+| `bdc_tables.py` | Table selection and schema fingerprint of the data product (a workspace file imported by the two notebooks) |
+| `CheckBdcSchema.py` | Decides whether the data product needs a republish (see below) |
 
 ## Setup
 
@@ -40,6 +42,32 @@ Per table:
   scan tasks and applies equality deletes by sequence number (table-wide, not per partition).
 - **DuckDB** always reads new data files directly and ignores delete files. Faster for large
   append-only tables, but can re-import deleted or superseded rows. Use it only for append-only data.
+
+## SAP BDC data product
+
+`bdc_connect` shares alarms (`cdc_alarm_alarm`), the inventory (`latest_inventory_inventory`) and every
+`cdc_measurement_c8y_sewpump_*` table as `cumulocity.<name>` in the Delta Share `cumulocity_adhoc_demo`,
+grants it to the recipient `sap-business-data-cloud`, and publishes it to SAP Business Data Cloud with
+ORD metadata and a CSN schema generated from the tables. It needs `CREATE SHARE` and `USE RECIPIENT` on
+the metastore (granted by the BDC operators) and the `sap-bdc-connect-sdk` secret scope with `api_url`,
+`tenant` and `token_audience`.
+
+**Republish on schema change.** Three tasks in the import job keep the data product in step with the
+tables:
+
+| Task | Does |
+|---|---|
+| `bdc_check` | After a successful import, computes a SHA-256 fingerprint over the selected tables, their names in the share, columns, types and nullability, and compares it with the last publish (`_bdc_publish_state`). Sets the task value `changed`. Takes seconds, installs nothing. |
+| `bdc_changed` | Condition: `{{tasks.bdc_check.values.changed}} == "true"`. |
+| `bdc_publish` | Runs `bdc_connect` (share contents, ORD, CSN, publish) and stores the new fingerprint. |
+
+So a new measurement column (the import appends with `mergeSchema`), a changed type, or a new sewage
+pump fragment table republishes the data product within one import cycle; otherwise nothing runs. To
+force a republish, delete the share's rows from `_bdc_publish_state` or run `bdc_connect` by hand.
+Upload `bdc_tables.py` as a workspace file next to both notebooks.
+
+`bdc_connect` also removes share tables whose source table no longer matches the selection, which
+removes them from the data product; consumers in Datasphere that use them break.
 
 ## Grafana
 

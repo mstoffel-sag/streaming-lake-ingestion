@@ -10,7 +10,9 @@
 # MAGIC `SELECT` on the source tables. CSN generation supports boolean, string, int, bigint, double, decimal,
 # MAGIC date and timestamp columns; every table should have a primary key (the import adds one on `row_id`).
 # MAGIC
-# MAGIC Run all cells. Re-running updates the share contents, metadata and schema.
+# MAGIC Run all cells. Re-running updates the share contents, metadata and schema. In the import job it runs only
+# MAGIC when `CheckBdcSchema` finds a schema change; the table selection lives in `bdc_tables.py` (keep it next to
+# MAGIC this notebook in the workspace).
 
 # COMMAND ----------
 
@@ -24,6 +26,8 @@ dbutils.library.restartPython()
 # COMMAND ----------
 
 # DBTITLE 1,Data product configuration
+from bdc_tables import SHARE_SCHEMA, schema_fingerprint, share_tables, store_published
+
 dbutils.widgets.text("catalog", "factory", "Source catalog")
 dbutils.widgets.text("schema", "adhoc-demo_eu-latest-t2180777119", "Source schema")
 dbutils.widgets.text("share_name", "cumulocity_adhoc_demo", "Share / data product name")
@@ -35,11 +39,9 @@ share_name = dbutils.widgets.get("share_name")
 recipient = dbutils.widgets.get("recipient")
 
 # Shared tables: source table name -> name inside the share (<share schema>.<table>).
-# Alarms, the device/asset master and the sewage pump measurements.
-SHARE_SCHEMA = "cumulocity"
-tables = {"cdc_alarm_alarm": "alarm", "latest_inventory_inventory": "inventory"}
-for row in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}` LIKE 'cdc_measurement_c8y_sewpump_*'").collect():
-    tables[row["tableName"]] = row["tableName"].replace("cdc_measurement_c8y_", "")
+tables = share_tables(spark, catalog, schema)
+# Taken before publishing, so a schema change during the run triggers the next one
+fingerprint = schema_fingerprint(spark, catalog, schema, tables)
 
 title = "Cumulocity adhoc-demo (eu-latest t2180777119)"
 short_description = "Cumulocity alarms, inventory and sewage pump measurements"
@@ -118,4 +120,5 @@ print("CSN uploaded.")
 
 # DBTITLE 1,Publish the data product
 bdc_connect_client.publish_data_product(share_name)
-print(f"Data product '{share_name}' published.")
+store_published(spark, catalog, schema, share_name, fingerprint)
+print(f"Data product '{share_name}' published (schema fingerprint {fingerprint[:12]}).")
