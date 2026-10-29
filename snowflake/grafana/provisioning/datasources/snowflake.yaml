@@ -1,0 +1,19 @@
+# Community Snowflake plugin (Michelin), key-pair authentication as a service user.
+# ${...} are filled from the container environment, $__file{} from the mounted key when Grafana provisions this file.
+apiVersion: 1
+datasources:
+  - name: Snowflake
+    uid: snowflake
+    type: michelin-snowflake-datasource
+    isDefault: true
+    jsonData:
+      account: ${SNOWFLAKE_ACCOUNT}
+      username: ${SNOWFLAKE_USER}
+      role: ${SNOWFLAKE_ROLE}
+      warehouse: ${SNOWFLAKE_WAREHOUSE}
+      database: ${SNOWFLAKE_DATABASE}
+      schema: CURATED
+      authMethod: keyPair
+      timeInterval: 1m
+    secureJsonData:
+      privateKey: $__file{/etc/grafana/secrets/grafana_key.b64}

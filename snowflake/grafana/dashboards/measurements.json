@@ -1,0 +1,321 @@
+{
+  "uid": "snowflake-measurements",
+  "title": "Measurements (Snowflake)",
+  "description": "Pick a device, then one or more of its series. Device/series lists come from CURATED.DEVICE_SERIES (dynamic table, target lag 15 min); the panels read the view CURATED.SERIES_VALUES, which only scans the tables of the selected series.",
+  "tags": [
+    "cumulocity",
+    "snowflake"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "",
+  "schemaVersion": 41,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "schema",
+        "label": "Schema",
+        "type": "constant",
+        "hide": 2,
+        "query": "CUMULOCITY_T2180777119.CURATED",
+        "description": "Database and schema of the CURATED tables and views (cumulocity_build_up.ipynb)"
+      },
+      {
+        "name": "device",
+        "label": "Device",
+        "type": "query",
+        "datasource": {
+          "type": "michelin-snowflake-datasource",
+          "uid": "snowflake"
+        },
+        "query": "SELECT DISTINCT DEVICE AS \"__text\", DEVICE_ID AS \"__value\" FROM ${schema:raw}.DEVICE_SERIES ORDER BY 1",
+        "definition": "SELECT DISTINCT DEVICE AS \"__text\", DEVICE_ID AS \"__value\" FROM ${schema:raw}.DEVICE_SERIES ORDER BY 1",
+        "refresh": 1,
+        "sort": 0
+      },
+      {
+        "name": "series",
+        "label": "Series",
+        "type": "query",
+        "datasource": {
+          "type": "michelin-snowflake-datasource",
+          "uid": "snowflake"
+        },
+        "query": "SELECT DISTINCT SERIES FROM ${schema:raw}.DEVICE_SERIES WHERE DEVICE_ID = '${device}' ORDER BY SERIES",
+        "definition": "SELECT DISTINCT SERIES FROM ${schema:raw}.DEVICE_SERIES WHERE DEVICE_ID = '${device}' ORDER BY SERIES",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": false,
+        "current": {},
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Selected series",
+      "description": "All selected series on one axis. Series with different scales: see the per-series charts below.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 12
+      },
+      "datasource": {
+        "type": "michelin-snowflake-datasource",
+        "uid": "snowflake"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "michelin-snowflake-datasource",
+            "uid": "snowflake"
+          },
+          "queryText": "SELECT $__timeGroup(TIME, $__interval) AS \"time\",\n       IFF(UNIT IS NULL OR UNIT = '', SERIES, SERIES || ' (' || UNIT || ')') AS \"metric\",\n       AVG(VALUE) AS \"value\"\nFROM ${schema:raw}.SERIES_VALUES\nWHERE DEVICE_ID = '${device}'\n  AND SERIES IN (${series:singlequote})\n  AND $__timeFilter(TIME)\nGROUP BY 1, 2\nORDER BY 1",
+          "queryType": "time series",
+          "timeColumns": [
+            "time"
+          ],
+          "fillMode": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "displayName": "${__field.labels.metric}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "In the selected time range",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "michelin-snowflake-datasource",
+        "uid": "snowflake"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "michelin-snowflake-datasource",
+            "uid": "snowflake"
+          },
+          "queryText": "SELECT SERIES AS \"Series\", MAX(UNIT) AS \"Unit\",\n       MAX_BY(VALUE, TIME) AS \"Latest\", MIN(VALUE) AS \"Min\",\n       AVG(VALUE) AS \"Average\", MAX(VALUE) AS \"Max\",\n       COUNT(*) AS \"Measurements\"\nFROM ${schema:raw}.SERIES_VALUES\nWHERE DEVICE_ID = '${device}'\n  AND SERIES IN (${series:singlequote})\n  AND $__timeFilter(TIME)\nGROUP BY SERIES\nORDER BY SERIES",
+          "queryType": "table",
+          "timeColumns": [],
+          "fillMode": "null"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Measurements"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Latest values",
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 10,
+        "h": 10
+      },
+      "datasource": {
+        "type": "michelin-snowflake-datasource",
+        "uid": "snowflake"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "michelin-snowflake-datasource",
+            "uid": "snowflake"
+          },
+          "queryText": "SELECT TIME AS \"Time\", SERIES AS \"Series\", VALUE AS \"Value\", UNIT AS \"Unit\"\nFROM ${schema:raw}.SERIES_VALUES\nWHERE DEVICE_ID = '${device}'\n  AND SERIES IN (${series:singlequote})\n  AND $__timeFilter(TIME)\nORDER BY TIME DESC\nLIMIT 200",
+          "queryType": "table",
+          "timeColumns": [
+            "Time"
+          ],
+          "fillMode": "null"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "All series of this device",
+      "gridPos": {
+        "x": 10,
+        "y": 18,
+        "w": 14,
+        "h": 10
+      },
+      "datasource": {
+        "type": "michelin-snowflake-datasource",
+        "uid": "snowflake"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "michelin-snowflake-datasource",
+            "uid": "snowflake"
+          },
+          "queryText": "SELECT SERIES AS \"Series\", UNIT AS \"Unit\", MEASUREMENTS AS \"Measurements\",\n       FIRST_TIME AS \"First\", LAST_TIME AS \"Last\"\nFROM ${schema:raw}.DEVICE_SERIES\nWHERE DEVICE_ID = '${device}'\nORDER BY SERIES",
+          "queryType": "table",
+          "timeColumns": [
+            "First",
+            "Last"
+          ],
+          "fillMode": "null"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "id": 5,
+      "type": "row",
+      "title": "One chart per series",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "${series}",
+      "repeat": "series",
+      "repeatDirection": "h",
+      "maxPerRow": 2,
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "michelin-snowflake-datasource",
+        "uid": "snowflake"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "michelin-snowflake-datasource",
+            "uid": "snowflake"
+          },
+          "queryText": "SELECT $__timeGroup(TIME, $__interval) AS \"time\",\n       IFF(UNIT IS NULL OR UNIT = '', SERIES, SERIES || ' (' || UNIT || ')') AS \"metric\",\n       AVG(VALUE) AS \"value\"\nFROM ${schema:raw}.SERIES_VALUES\nWHERE DEVICE_ID = '${device}'\n  AND SERIES IN (${series:singlequote})\n  AND $__timeFilter(TIME)\nGROUP BY 1, 2\nORDER BY 1",
+          "queryType": "time series",
+          "timeColumns": [
+            "time"
+          ],
+          "fillMode": ""
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false,
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic-by-name"
+          },
+          "displayName": "${__field.labels.metric}"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    }
+  ],
+  "timepicker": {
+    "refresh_intervals": [
+      "15m",
+      "30m",
+      "1h"
+    ]
+  }
+}

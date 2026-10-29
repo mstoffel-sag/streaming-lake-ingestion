@@ -1,0 +1,30 @@
+# Own project name: the folder is called grafana like databricks/grafana, whose containers and volume it would replace
+name: grafana-snowflake
+
+services:
+  grafana:
+    build: .
+    container_name: grafana-snowflake
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/measurements.json
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      # Read by provisioning/datasources/snowflake.yaml
+      - SNOWFLAKE_ACCOUNT=${SNOWFLAKE_ACCOUNT:?set SNOWFLAKE_ACCOUNT in .env}
+      - SNOWFLAKE_USER=${SNOWFLAKE_USER:?set SNOWFLAKE_USER in .env}
+      - SNOWFLAKE_ROLE=${SNOWFLAKE_ROLE:?set SNOWFLAKE_ROLE in .env}
+      - SNOWFLAKE_WAREHOUSE=${SNOWFLAKE_WAREHOUSE:?set SNOWFLAKE_WAREHOUSE in .env}
+      - SNOWFLAKE_DATABASE=${SNOWFLAKE_DATABASE:?set SNOWFLAKE_DATABASE in .env}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/etc/grafana/dashboards:ro
+      - ./secrets:/etc/grafana/secrets:ro
+    mem_limit: 768m
+
+volumes:
+  grafana_data:

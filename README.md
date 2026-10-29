@@ -17,11 +17,11 @@ role and hands out short-lived S3 credentials per table, so no AWS keys are conf
 | `doris/` | Apache Doris 4.1.5 ([README](doris/README.md)) | Grafana (MySQL data source) |
 | `duckdb/` | DuckDB 1.5.6 `iceberg` extension ([README](duckdb/README.md)) | Grafana (DuckDB plugin) |
 | `spark/` | Spark 4.1.3 Thrift Server + Iceberg 1.12.0 ([README](spark/README.md)) | none (JDBC only) |
-| `snowflake/` | Snowflake catalog-linked database ([README](snowflake/README.md)) | — |
+| `snowflake/` | Snowflake catalog-linked database, SAP BDC data product ([README](snowflake/README.md)) | Grafana (community Snowflake plugin, key pair) |
 | `databricks/` | Incremental import into Delta ([README](databricks/README.md)) | Grafana (community Databricks plugin, SQL warehouse) |
 | `aws/` | `setup-c8y-streaming-lake-role.sh`: S3 bucket and IAM role for an own data lake | — |
 
-`starrocks/`, `doris/`, `duckdb/` and `databricks/grafana/` all serve Grafana on port 3000 (`databricks/grafana/`: `GRAFANA_PORT`); run one of them at a time.
+`starrocks/`, `doris/`, `duckdb/`, `databricks/grafana/` and `snowflake/grafana/` all serve Grafana on port 3000 (the last two: `GRAFANA_PORT`); run one of them at a time or set different ports.
 
 ## Engine comparison
 
