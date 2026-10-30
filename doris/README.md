@@ -30,10 +30,10 @@ SQL: `docker exec -it doris-fe mysql -h 127.0.0.1 -P 9030 -u root`, tables as
 | Check | Result |
 |---|---|
 | Vended credentials | works |
-| Table / namespace names | case-sensitive: `bearingTemperature` works, `bearingtemperature` is not found (StarRocks finds both) |
+| Table / namespace names | case-sensitive: `bearingTemperature` works, `bearingtemperature` is not found (StarRocks too, until `bearingTemperature` is in its case-insensitive table cache) |
 | Column / struct field names | case kept, but matched case-insensitively (`lastupdated` finds `lastUpdated`), like StarRocks, DuckDB and Spark |
 | Equality deletes | `latest_inventory.inventory` returns one row per id (28,138, same as Spark) |
-| Nested namespaces | listed as `default.t15264971`, `default.t15264971.internal` (the other engines don't show them) |
+| Nested namespaces | listed as `default.t15264971`, `default.t15264971.internal` (StarRocks lists them too since `iceberg.catalog.rest.nested-namespace-enabled` is set; DuckDB and Spark don't show them) |
 | Full dashboard, 11 queries in parallel (8 series, 24 h) | 20.5 s cold, 11–12 s warm (StarRocks 18.2 s / 3.0 s, DuckDB 24.6 s / 9.1 s) |
 
 ## Notes

@@ -51,14 +51,22 @@ docker exec -it starrocks mysql -h 127.0.0.1 -P 9030 -u root
 SHOW DATABASES FROM polaris;
 ```
 
-Mixed-case names keep their case and are matched case-insensitively, so both of these work;
-backticks are only required for names with special characters such as `-`:
+Table names reach Polaris exactly as written, and Polaris resolves them case-sensitively, so
+write the fragment name with its case; backticks are only required for names with special
+characters such as `-`:
 
 ```sql
-SELECT * FROM polaris.cdc_measurement.`c8y_Temperature`;
-SELECT * FROM polaris.cdc_measurement.c8y_temperature;
+SELECT * FROM polaris.cdc_measurement.c8y_Temperature;
 SELECT * FROM polaris.cdc_measurement.`cgroup-mosquitto`;
 ```
+
+Streaming Lake Ingestion keeps table names unique regardless of case: a fragment that differs
+from an existing table only by case goes to a table with a numeric suffix (tested 2026-10-30:
+`CaseTest` landed in `CaseTest__88` next to `caseTest`; series work the same way, `V` landed in
+column `V__1` next to `v`). StarRocks caches loaded tables under a
+case-insensitive key, so once `caseTest` is cached, a query for the nonexistent `CaseTest`
+returns the data of `caseTest` instead of an error (cold, it fails with `Unknown table`). Use the
+exact names from `information_schema`, as `init/device_series.py` does.
 
 The `view_*` namespaces hold Iceberg views with flattened columns and are queryable
 since StarRocks 4.1 (earlier versions failed on names starting with `view`):

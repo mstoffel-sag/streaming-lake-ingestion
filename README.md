@@ -32,7 +32,7 @@ Cumulocity tenant (167 tables), tested 2026-10-20 in an 8 GB Colima VM.
 |---|---|---|---|---|
 | Measurements dashboard, warm¹ | **3 s** | 11–12 s | 9 s | no Grafana |
 | Same, right after a start¹ | 18 s | 20 s | 25 s | — |
-| Table names (= measurement fragments) | case kept, **matched case-insensitively** | case-sensitive | case-sensitive | not tested |
+| Table names (= measurement fragments) | case-sensitive; table cache ignores case | case-sensitive | case-sensitive | not tested |
 | Column names | case kept, matched case-insensitively | same | same | same (Spark default) |
 | Equality deletes (`latest_inventory`) | yes | yes | yes | yes |
 | Metadata caching | yes, refreshed in the background | yes, but 24 h by default (set to 60 s here) | none across sessions | per session |
@@ -42,23 +42,36 @@ Cumulocity tenant (167 tables), tested 2026-10-20 in an 8 GB Colima VM.
 
 ¹ 11 Grafana queries in parallel: 8 series, 24 hours, one device.
 
-- **StarRocks:** fastest by a wide margin; one container; works with the defaults. Caveat: it
-  resolves table names case-insensitively (`bearingtemperature` finds `bearingTemperature`). What
-  happens if two fragment tables ever differ only by case is untested.
-- **Doris:** meets every requirement, keeps table names strictly case-sensitive and is the only
-  engine that lists the catalog's nested namespaces, but slower, heavier and with surprising defaults. A tested alternative.
+- **StarRocks:** fastest by a wide margin; one container; works with the defaults. Reads nested
+  namespaces (dotted database names are split into levels); `init-catalog.sh` sets
+  `iceberg.catalog.rest.nested-namespace-enabled` so `SHOW DATABASES` lists them too. Table
+  names reach Polaris as written and resolve case-sensitively. Caveat: the table cache ignores
+  case, so once `bearingTemperature` is loaded, `bearingtemperature` returns its data too instead
+  of an error (a cold `bearingtemperature` fails). No wrong table is possible: Streaming Lake
+  Ingestion gives a fragment that differs from an existing table only by case a numeric suffix
+  (`CaseTest__88` next to `caseTest`, tested 2026-10-30).
+- **Doris:** meets every requirement and keeps table names strictly case-sensitive, but slower,
+  heavier and with surprising defaults. A tested alternative.
 - **DuckDB:** fast for single ad-hoc queries (0.05 s warm), weak behind a dashboard: the Grafana
   plugin runs one query at a time and Iceberg metadata isn't cached across sessions.
 - **Spark:** for batch and ETL; seconds of overhead per query, no maintained Grafana data source.
+- **Dremio 26** (not benchmarked here): REST catalog source with vended credentials and nested
+  namespaces, reads equality deletes (25 and earlier fail on `latest_inventory`). Matches table
+  names case-insensitively.
+
+- **Trino 484** (not benchmarked here): reads everything with
+  `iceberg.rest-catalog.case-insensitive-name-matching=true` and
+  `iceberg.rest-catalog.nested-namespace-enabled=true`, but lowercases all identifiers
+  ([trinodb/trino#17](https://github.com/trinodb/trino/issues/17)), so names show as `casetest`
+  and `eventtype`. Without the setting, mixed-case tables are unreachable. Name collisions can't
+  happen: Streaming Lake Ingestion suffixes a table or column that differs from an existing one
+  only by case (tested 2026-10-30: `CaseTest__88` next to `caseTest`, column `V__1` next to `v`).
+  Starburst (Trino-based) is untested.
 
 Ruled out:
-- **Trino / Starburst:** lowercase all identifiers
-  ([trinodb/trino#17](https://github.com/trinodb/trino/issues/17), open since 2019). The
-  `case-insensitive-name-matching` workaround fails once two fragments differ only by case,
-  and Cumulocity fragment names must stay case-sensitive.
-- **Impala** (no equality deletes), **Daft** (no equality deletes), **ClickHouse** (catalog
-  integration experimental, no nested namespaces yet), **Dremio** (REST catalog source not in
-  the open-source edition).
+- **Impala** (equality deletes only in the subset Flink writes; case-insensitive names),
+  **Daft** (no equality deletes), **ClickHouse** (catalog integration experimental, position
+  deletes only, no nested namespaces yet).
 
 ## Prerequisites
 

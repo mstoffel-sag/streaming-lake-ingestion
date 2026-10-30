@@ -24,6 +24,10 @@ PROPERTIES (
     -- credentials scoped to each table's location; no AWS keys needed here.
     "iceberg.catalog.vended-credentials-enabled" = "true",
 
+    -- List nested namespaces (default.<tenant>.internal) in SHOW DATABASES.
+    -- Querying them works without it: dotted database names are split into levels.
+    "iceberg.catalog.rest.nested-namespace-enabled" = "true",
+
     "aws.s3.region"                           = "${AWS_REGION}"
 );
 
