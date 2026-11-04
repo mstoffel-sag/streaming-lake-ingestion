@@ -26,7 +26,7 @@ dbutils.library.restartPython()
 # COMMAND ----------
 
 # DBTITLE 1,Data product configuration
-from bdc_tables import SHARE_SCHEMA, schema_fingerprint, share_tables, store_published
+from bdc_tables import schema_fingerprint, share_tables, store_published
 
 dbutils.widgets.text("catalog", "factory", "Source catalog")
 dbutils.widgets.text("schema", "adhoc-demo_eu-latest-t2180777119", "Source schema")
@@ -44,16 +44,18 @@ tables = share_tables(spark, catalog, schema)
 fingerprint = schema_fingerprint(spark, catalog, schema, tables)
 
 title = "Cumulocity adhoc-demo (eu-latest t2180777119)"
-short_description = "Cumulocity alarms, inventory and sewage pump measurements"
+short_description = "All Cumulocity data of the tenant: alarms, events, inventory and measurements"
 description = (
-    "Alarms (change log), the current device/asset inventory and the sewage pump measurement series "
-    "from Cumulocity Streaming Lake Ingestion, imported from the Iceberg catalog every few minutes."
+    "Everything Cumulocity Streaming Lake Ingestion writes for the tenant, imported from the Iceberg catalog "
+    "every few minutes. Schemas mirror the Iceberg namespaces: cdc_* hold the change log (one row per create, "
+    "update or delete), latest_* the current state per object. curated.measurement has every measurement "
+    "series in long format (time, source, fragment, series, value, unit) for analytic models."
 )
-version = "1.0.0"
+version = "1.1.0"  # the major version must match the :v1 in the ordId
 
 print(f"Share '{share_name}' with {len(tables)} table(s) from {catalog}.{schema}:")
 for source, alias in sorted(tables.items()):
-    print(f"  {source} -> {SHARE_SCHEMA}.{alias}")
+    print(f"  {source} -> {alias}")
 
 # COMMAND ----------
 
@@ -61,15 +63,15 @@ for source, alias in sorted(tables.items()):
 spark.sql(f"CREATE SHARE IF NOT EXISTS `{share_name}` COMMENT '{short_description}'")
 
 shared = {r["name"]: r["shared_object"] for r in spark.sql(f"SHOW ALL IN SHARE `{share_name}`").collect() if r["type"] == "TABLE"}
-for source, alias in sorted(tables.items()):
-    name = f"{SHARE_SCHEMA}.{alias}"
+# Remove first: a table can be in a share only once, so a renamed alias must go before it is re-added
+for name in sorted(set(shared) - set(tables.values())):
+    spark.sql(f"ALTER SHARE `{share_name}` REMOVE TABLE {name}")
+    print(f"  removed {name}")
+for source, name in sorted(tables.items()):
     if name in shared:
         continue
     spark.sql(f"ALTER SHARE `{share_name}` ADD TABLE `{catalog}`.`{schema}`.`{source}` AS {name}")
     print(f"  added {name}")
-for name in sorted(set(shared) - {f"{SHARE_SCHEMA}.{a}" for a in tables.values()}):
-    spark.sql(f"ALTER SHARE `{share_name}` REMOVE TABLE {name}")
-    print(f"  removed {name}")
 
 spark.sql(f"GRANT SELECT ON SHARE `{share_name}` TO RECIPIENT `{recipient}`")
 print(f"Share '{share_name}' granted to recipient '{recipient}'.")
@@ -111,6 +113,12 @@ print("Share registered.")
 
 # DBTITLE 1,Generate and upload the CSN schema
 csn_schema = csn_generator.generate_csn_template(share_name)
+# The generator declares Delta TIMESTAMP columns as cds.DateTime (SECONDDATE in Datasphere). The share
+# delivers TIMESTAMP, so the Datasphere install fails with MISMATCH IN DATA TYPE; declare them as cds.Timestamp.
+for definition in csn_schema["definitions"].values():
+    for element in definition.get("elements", {}).values():
+        if element.get("type") == "cds.DateTime":
+            element["type"] = "cds.Timestamp"
 print(f"CSN entities: {sorted(k for k, v in csn_schema['definitions'].items() if v.get('kind') == 'entity')}")
 
 bdc_connect_client.create_or_update_share_csn(share_name, csn_schema)

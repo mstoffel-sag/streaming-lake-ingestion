@@ -4,17 +4,30 @@ Imported by bdc_connect and CheckBdcSchema (a plain workspace file next to them,
 so both work on the same table set.
 """
 import hashlib
+import re
 
-SHARE_SCHEMA = "cumulocity"  # schema name inside the share: cumulocity.<alias>
+# <namespace>_<table> as written by the import, e.g. cdc_measurement_c8y_sewpump_health; the namespace
+# (cdc_alarm, cdc_event, cdc_inventory, cdc_measurement, latest_inventory, ...) becomes the schema in the share.
+IMPORT_TABLE = re.compile(r"^((?:cdc|latest)_[a-z0-9]+)_(.+)$")
+FACT_TABLE = "curated_measurement"  # long-format measurements, written by RefreshMeasurementFact
 STATE_TABLE = "_bdc_publish_state"  # last published fingerprint per share
 
 
 def share_tables(spark, catalog, schema):
-    """Source table -> name inside the share. Alarms, the device/asset master and the sewage pump
-    measurements (one table per measurement fragment, so new fragments join automatically)."""
-    tables = {"cdc_alarm_alarm": "alarm", "latest_inventory_inventory": "inventory"}
-    for row in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}` LIKE 'cdc_measurement_c8y_sewpump_*'").collect():
-        tables[row["tableName"]] = row["tableName"].replace("cdc_measurement_c8y_", "")
+    """Source table -> name inside the share (<schema>.<table>).
+
+    Every table the import writes: the cdc_* change logs and the latest_* current state, under their
+    Iceberg namespace (cdc_measurement.c8y_sewpump_health, latest_inventory.inventory, ...), plus the
+    measurement fact table as curated.measurement. New Iceberg tables join automatically; helper tables
+    (_*, grafana_*, internal_*) don't match.
+    """
+    tables = {}
+    for row in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").collect():
+        match = IMPORT_TABLE.match(row["tableName"])
+        if match and not row["isTemporary"]:
+            tables[row["tableName"]] = f"{match.group(1)}.{match.group(2)}"
+    if spark.catalog.tableExists(f"`{catalog}`.`{schema}`.{FACT_TABLE}"):
+        tables[FACT_TABLE] = "curated.measurement"
     return tables
 
 

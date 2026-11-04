@@ -12,6 +12,8 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 | `sap-bdc/bdc_connect.py` | Creates a Delta Share from selected import tables and publishes it as a data product to SAP Business Data Cloud (consumable in SAP Datasphere) |
 | `sap-bdc/bdc_tables.py` | Table selection and schema fingerprint of the data product (a workspace file imported by the two notebooks) |
 | `sap-bdc/CheckBdcSchema.py` | Decides whether the data product needs a republish (see below) |
+| `sap-bdc/RefreshMeasurementFact.py` | Rebuilds `curated_measurement`, all measurement series in long format |
+| `sap-bdc/bdc_delete.py` | Removes the data product from BDC and drops the Delta Share |
 
 ## Setup
 
@@ -31,7 +33,8 @@ Per table:
      snapshots added, then append. Progress follows Iceberg snapshots, not event time, so late
      measurements and alarm updates are picked up.
    - Otherwise (first import, expired snapshot, overwrite/delete commits): full read, overwrite.
-3. **Flatten** nested columns (lists/complex types become JSON), add a unique `row_id`.
+3. **Flatten** nested columns: one level of objects becomes columns, lists and deeper objects become JSON
+   strings (no `struct` columns), and a unique `row_id` is added.
 4. **Write** to Delta (append with `mergeSchema`, or overwrite), store snapshot ID and sequence number.
 5. Ensure `PRIMARY KEY (row_id)` on every target table. The run fails if any table failed to import.
 
@@ -45,10 +48,23 @@ Per table:
 
 ## SAP BDC data product
 
-`bdc_connect` shares alarms (`cdc_alarm_alarm`), the inventory (`latest_inventory_inventory`) and every
-`cdc_measurement_c8y_sewpump_*` table as `cumulocity.<name>` in the Delta Share `cumulocity_adhoc_demo`,
+`bdc_connect` shares everything the import writes for the tenant in the Delta Share `cumulocity_adhoc_demo`,
 grants it to the recipient `sap-business-data-cloud`, and publishes it to SAP Business Data Cloud with
-ORD metadata and a CSN schema generated from the tables. It needs `CREATE SHARE` and `USE RECIPIENT` on
+ORD metadata and a CSN schema generated from the tables:
+
+| In the share | Source | Content |
+|---|---|---|
+| `cdc_<namespace>.<table>` | every `cdc_*` table | Change log per Iceberg table: alarms, events, inventory, one table per measurement fragment |
+| `latest_<namespace>.<table>` | every `latest_*` table | Current state per object (inventory) |
+| `curated.measurement` | `curated_measurement` | Every measurement series in long format: `id, fragment, series, time, source, value, unit`, key `(id, fragment, series)`. The fact for analytic models |
+
+New Iceberg tables join automatically (`bdc_tables.share_tables`); helper tables (`_*`, `grafana_*`,
+`internal_*`) are left out. The task `measurement_fact` rebuilds `curated_measurement` after every import
+(`RefreshMeasurementFact`); it discovers the `<series>_value` columns on each run.
+
+Two adjustments make the tables installable in Datasphere: the CSN declares timestamps as `cds.Timestamp`
+(the SDK generates `cds.DateTime`, which Datasphere rejects with `MISMATCH IN DATA TYPE`), and the import
+writes no `struct` columns, which the CSN can't express. It needs `CREATE SHARE` and `USE RECIPIENT` on
 the metastore (granted by the BDC operators) and the `sap-bdc-connect-sdk` secret scope with `api_url`,
 `tenant` and `token_audience`.
 
@@ -61,13 +77,67 @@ tables:
 | `bdc_changed` | Condition: `{{tasks.bdc_check.values.changed}} == "true"`. |
 | `bdc_publish` | Runs `bdc_connect` (share contents, ORD, CSN, publish) and stores the new fingerprint. |
 
-So a new measurement column (the import appends with `mergeSchema`), a changed type, or a new sewage
-pump fragment table republishes the data product within one import cycle; otherwise nothing runs. To
+So a new measurement column (the import appends with `mergeSchema`), a changed type, or a new Iceberg
+table republishes the data product within one import cycle; otherwise nothing runs. To
 force a republish, delete the share's rows from `_bdc_publish_state` or run `bdc_connect` by hand.
-Import the three files from `sap-bdc/` into the workspace and upload `bdc_tables.py` as a workspace file next to both notebooks.
+Import the notebooks from `sap-bdc/` into the workspace and upload `bdc_tables.py` as a workspace file next to them.
 
 `bdc_connect` also removes share tables whose source table no longer matches the selection, which
 removes them from the data product; consumers in Datasphere that use them break.
+
+### Step by step: from Databricks to Datasphere
+
+**Once, by the platform admins**
+- Databricks metastore: `CREATE SHARE` for you (workspace admins have it) and `USE RECIPIENT` on
+  `sap-business-data-cloud` (only the BDC operators can grant it).
+- Secret scope `sap-bdc-connect-sdk` with `api_url`, `tenant` and `token_audience`.
+- Datasphere: a space for the data (here `CUMULOCITY`) with you as a member who may install data products,
+  and Datasphere enabled as a target for data products from the SAP Databricks system.
+- BDC: the approver role for the domain (*Governance → Access Management* shows the requests).
+
+**1. Databricks: publish**
+1. Import `sap-bdc/` into the workspace folder of the import notebook: `bdc_connect`, `CheckBdcSchema`,
+   `RefreshMeasurementFact`, `bdc_delete` as notebooks, `bdc_tables.py` as a file.
+2. Import job: add the task `measurement_fact` (notebook `RefreshMeasurementFact`, depends on `import`,
+   *Run if* **All done**) and run the job once, so `curated_measurement` exists.
+3. Decide the table names now: renaming or removing tables after the first install is a breaking change (see
+   below).
+4. Run `bdc_connect`. The output lists every table (`source -> schema.table`), then `Share registered.`,
+   `CSN uploaded.` and `Data product '...' published`.
+5. Optional, automatic republish: add the tasks `bdc_check`, `bdc_changed` and `bdc_publish` (table above).
+
+**2. BDC: wait for the catalog**
+1. BDC cockpit, *Catalog & Marketplace → Metadata Extractions*: wait until `databricks-6918e1f0` shows
+   *Synchronized* with *Last Synchronized* **after** your publish. The catalog shows what the last extraction
+   read, not what you just published.
+2. *Catalog & Marketplace → Search → Data Products*: open the product and check version, description and
+   *APIs* (functional status *Current*).
+
+**3. Datasphere: request, approve, install**
+1. In **Datasphere** (not the BDC cockpit, whose cart doesn't offer Datasphere): *Catalog & Marketplace →
+   Search → Data Products*, find the product, *Add to Cart*, open the cart, *Proceed*.
+2. *Request Access*: space `CUMULOCITY`, a comment, no end date, accept the terms, *Send*.
+3. BDC cockpit, *Governance → Access Management*: open the request and *Approve*.
+4. Datasphere, *Catalog & Marketplace → Data Product Access → Agreements*: open the agreement (status
+   *Current*), *Install Data Product*, delivery method **Federation** (queries read the Delta tables live;
+   Replication copies them), *Install*.
+5. Watch the notifications (bell): *Data Product Installation: Completed* with *Saved objects* equal to
+   *Deployed objects*. With *Failed*, *Show More* lists the table and column; deployment is all or nothing.
+6. *Data Builder →* space `CUMULOCITY`: every table is a *Remote Table*, status *Deployed*. Open one,
+   *Data Viewer*, and compare the row count with Databricks.
+
+**Changing the data product later**
+- Additive changes (new tables or columns) need a republish (automatic with the `bdc_*` tasks), a catalog
+  sync, then *Check for Schema Changes* or *⋯ → Reinstall Data Product* on the agreement.
+- Renaming or removing tables broke the installed product here: BDC kept serving the old definition after the
+  republish, and the reinstall deployed the old tables, which no longer existed in the share. For such a
+  change, publish a new major version instead (`ordId` `...:v2`, `version` `2.0.0`) and install that.
+
+**Removing everything**
+1. Remove the `bdc_*` tasks from the import job, or the next schema change publishes again.
+2. Datasphere, *Data Product Access → Agreements →* the agreement *→ End Agreement* (uninstalls it).
+3. Run `bdc_delete`: deletes the share and data product in BDC, then drops the Delta Share and
+   `_bdc_publish_state`. The catalog entry disappears with the next metadata extraction.
 
 ## Grafana
 
