@@ -115,19 +115,47 @@ version 1.0.0.
 
 ### 3. Consuming the data product
 
-Installation targets come from the formation's request cart (*Add to Cart → Select Target
-System*). In the BDC ExperienceCenter EU10 formation (checked 2026-10-29) the cart offers only
-`databricks-6918e1f0` and `snowflake-7df47c68`:
+Where you can install the data product depends on where you request it. The BDC cockpit's request
+cart (*Add to Cart → Select Target System*) offers only the SAP Databricks and SAP Snowflake systems
+of the formation. Datasphere's own catalog requests access for Datasphere itself (checked 2026-11-06,
+BDC ExperienceCenter EU10):
 
 | Data product from | SAP Databricks | SAP Snowflake | SAP Datasphere |
 |---|---|---|---|
-| SAP Snowflake (this one) | supported | no (same system) | not offered |
-| SAP Databricks | no (same system) | no: "Data products from Databricks systems can't be installed to Snowflake systems" | not offered |
+| SAP Snowflake (this one) | supported (BDC cockpit cart) | no (same system) | supported (request in Datasphere) |
+| SAP Databricks | no (same system) | no: "Data products from Databricks systems can't be installed to Snowflake systems" | supported (request in Datasphere) |
 
-So the Snowflake product can be installed to SAP Databricks, which the Databricks product cannot
-reach anywhere. Neither reaches Datasphere: the formation doesn't list `datasphere-tenant-ccf8cb77`
-as a target at all, and *Metadata Extractions* shows it as *External SAP Datasphere* with a *Missing
-User* warning. Making Datasphere a target needs a Datasphere and BDC administrator.
+The CSN is already Datasphere-compatible: timestamps are `cds.Timestamp`, there are no structured
+columns (arrays and objects are JSON text), and all tables sit in one schema, so the remote table
+names `<share>:v1.<TABLE>` can't collide.
+
+**Install in Datasphere** (same steps as for the Databricks product, see
+[../databricks/sap-bdc/README.md](../databricks/sap-bdc/README.md)):
+
+1. Wait until *Catalog & Marketplace → Metadata Extractions* in the BDC cockpit shows
+   `snowflake-7df47c68` *Synchronized* with a time after the publish.
+2. In **Datasphere**, *Catalog & Marketplace → Search → Data Products*, find the product (source system
+   `snowflake-…`), *Add to Cart*, open the cart, *Proceed*.
+3. *Request Access*: space `CUMULOCITY`, a comment, no end date, accept the terms, *Send*.
+4. BDC cockpit, *Governance → Access Management → Requests*: open the request, *Approve*.
+5. Datasphere, *Catalog & Marketplace → Data Product Access → Agreements*: open the agreement,
+   *Install Data Product*, delivery method **Federation** (the default is Replication), *Install*.
+6. Watch the notifications (bell, reload the page): *Data Product Installation: Completed* with
+   *Saved objects* equal to *Deployed objects*.
+7. *Data Builder →* space `CUMULOCITY`: the tables appear as remote tables of the SAP-managed space
+   `SNOWFLAKE7DF47C68`, shared into `CUMULOCITY`, named `cumulocity_adhoc_demo:v1.<TABLE>`. They can't
+   be opened from there; to check the data, open *New SQL View*, query
+   `"SNOWFLAKE7DF47C68.cumulocity_adhoc_demo:v1.SEWPUMP_WINDINGTEMPC"`, use *Data Viewer*, and discard
+   the view.
+
+Tested 2026-11-06: the install with Federation took about 7 minutes and deployed all 21 tables
+(`ALARM`, `INVENTORY`, 19 `SEWPUMP_*`) with no type errors. `SEWPUMP_WINDINGTEMPC` returned 207,856 rows
+in Datasphere.
+
+After `OPS.BDC_PUBLISH` republishes a schema change, the Datasphere side stays manual, as for
+Databricks: *Data Product Access → Agreements →* the agreement *→ Check for Schema Changes* or
+*Reinstall Data Product*. Remove the installation with *End Agreement* before the tear-down notebook
+drops the share.
 
 ## Grafana
 
