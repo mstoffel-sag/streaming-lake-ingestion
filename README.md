@@ -69,9 +69,12 @@ Cumulocity tenant (167 tables), tested 2026-10-20 in an 8 GB Colima VM.
   Starburst (Trino-based) is untested.
 
 Ruled out:
-- **Impala** (equality deletes only in the subset Flink writes; case-insensitive names),
-  **Daft** (no equality deletes), **ClickHouse** (catalog integration experimental, position
-  deletes only, no nested namespaces yet).
+- **Impala** (equality deletes only in the subset Flink writes), **Daft** (positional deletes
+  only; equality deletes on the roadmap).
+
+Not tested: **ClickHouse** now documents Iceberg REST catalogs with vended credentials
+(`DataLakeCatalog`, `allow_database_iceberg`) and equality deletes since 25.8; nested
+namespaces and table name case are not documented.
 
 ## Prerequisites
 
