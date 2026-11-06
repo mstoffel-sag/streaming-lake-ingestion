@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC ## Refresh the long-format measurement fact table
 # MAGIC
-# MAGIC Rebuilds `curated_measurement` (shared in the BDC data product as `curated.measurement`): one row per
+# MAGIC Rebuilds `curated_measurement` (shared in the BDC data product as `curated.curated_measurement`): one row per
 # MAGIC measurement and series, `time, source, fragment, series, value, unit`. The import writes every measurement
 # MAGIC fragment to its own `cdc_measurement_<fragment>` table with `<series>_value` / `<series>_unit` columns;
 # MAGIC an Analytic Model in Datasphere needs one fact instead. The columns are discovered on every run, so new

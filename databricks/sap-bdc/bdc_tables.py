@@ -17,17 +17,20 @@ def share_tables(spark, catalog, schema):
     """Source table -> name inside the share (<schema>.<table>).
 
     Every table the import writes: the cdc_* change logs and the latest_* current state, under their
-    Iceberg namespace (cdc_measurement.c8y_sewpump_health, latest_inventory.inventory, ...), plus the
-    measurement fact table as curated.measurement. New Iceberg tables join automatically; helper tables
-    (_*, grafana_*, internal_*) don't match.
+    Iceberg namespace, plus the measurement fact table under curated. New Iceberg tables join automatically;
+    helper tables (_*, grafana_*, internal_*) don't match.
+
+    The table part keeps the full import name (cdc_inventory.cdc_inventory_c8y_agent, not
+    cdc_inventory.c8y_agent): Datasphere names remote tables <share>.<table> without the schema, so
+    cdc_inventory.c8y_agent and latest_inventory.c8y_agent would collide and the install drops one of them.
     """
     tables = {}
     for row in spark.sql(f"SHOW TABLES IN `{catalog}`.`{schema}`").collect():
         match = IMPORT_TABLE.match(row["tableName"])
         if match and not row["isTemporary"]:
-            tables[row["tableName"]] = f"{match.group(1)}.{match.group(2)}"
+            tables[row["tableName"]] = f"{match.group(1)}.{row['tableName']}"
     if spark.catalog.tableExists(f"`{catalog}`.`{schema}`.{FACT_TABLE}"):
-        tables[FACT_TABLE] = "curated.measurement"
+        tables[FACT_TABLE] = f"curated.{FACT_TABLE}"
     return tables
 
 

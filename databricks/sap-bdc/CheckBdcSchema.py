@@ -12,7 +12,7 @@ from bdc_tables import last_published, schema_fingerprint, share_tables
 
 dbutils.widgets.text("catalog", "factory", "Source catalog")
 dbutils.widgets.text("schema", "adhoc-demo_eu-latest-t2180777119", "Source schema")
-dbutils.widgets.text("share_name", "cumulocity_adhoc_demo", "Share / data product name")
+dbutils.widgets.text("share_name", "cumulocity_t2180777119", "Share / data product name")
 catalog = dbutils.widgets.get("catalog")
 schema = dbutils.widgets.get("schema")
 share_name = dbutils.widgets.get("share_name")

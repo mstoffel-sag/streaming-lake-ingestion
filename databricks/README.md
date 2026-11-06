@@ -48,18 +48,21 @@ Per table:
 
 ## SAP BDC data product
 
-`bdc_connect` shares everything the import writes for the tenant in the Delta Share `cumulocity_adhoc_demo`,
+`bdc_connect` shares everything the import writes for the tenant in the Delta Share `cumulocity_t2180777119`,
 grants it to the recipient `sap-business-data-cloud`, and publishes it to SAP Business Data Cloud with
 ORD metadata and a CSN schema generated from the tables:
 
 | In the share | Source | Content |
 |---|---|---|
-| `cdc_<namespace>.<table>` | every `cdc_*` table | Change log per Iceberg table: alarms, events, inventory, one table per measurement fragment |
-| `latest_<namespace>.<table>` | every `latest_*` table | Current state per object (inventory) |
-| `curated.measurement` | `curated_measurement` | Every measurement series in long format: `id, fragment, series, time, source, value, unit`, key `(id, fragment, series)`. The fact for analytic models |
+| `cdc_<namespace>.cdc_<namespace>_<table>` | every `cdc_*` table | Change log per Iceberg table: alarms, events, inventory, one table per measurement fragment |
+| `latest_<namespace>.latest_<namespace>_<table>` | every `latest_*` table | Current state per object (inventory) |
+| `curated.curated_measurement` | `curated_measurement` | Every measurement series in long format: `id, fragment, series, time, source, value, unit`, key `(id, fragment, series)`. The fact for analytic models |
 
 New Iceberg tables join automatically (`bdc_tables.share_tables`); helper tables (`_*`, `grafana_*`,
-`internal_*`) are left out. The task `measurement_fact` rebuilds `curated_measurement` after every import
+`internal_*`) are left out. Inside the share each table keeps its full Databricks name: Datasphere names the
+remote tables `<share>:v1.<table>` without the schema, and with short names `cdc_inventory.c8y_agent` and
+`latest_inventory.c8y_agent` collided, so the install dropped all 18 `latest_inventory` tables (tested
+2026-11-06: 119 of 137 tables deployed). The task `measurement_fact` rebuilds `curated_measurement` after every import
 (`RefreshMeasurementFact`); it discovers the `<series>_value` columns on each run.
 
 Two adjustments make the tables installable in Datasphere: the CSN declares timestamps as `cds.Timestamp`
@@ -110,7 +113,7 @@ removes them from the data product; consumers in Datasphere that use them break.
 1. BDC cockpit, *Catalog & Marketplace → Metadata Extractions*: wait until `databricks-6918e1f0` shows
    *Synchronized* with *Last Synchronized* **after** your publish. The catalog shows what the last extraction
    read, not what you just published.
-2. *Catalog & Marketplace → Search → Data Products*: open the product and check version, description and
+2. *Catalog & Marketplace → Search → Data Products*: open the product and check the description and
    *APIs* (functional status *Current*).
 
 **3. Datasphere: request, approve, install**
@@ -129,9 +132,13 @@ removes them from the data product; consumers in Datasphere that use them break.
 **Changing the data product later**
 - Additive changes (new tables or columns) need a republish (automatic with the `bdc_*` tasks), a catalog
   sync, then *Check for Schema Changes* or *⋯ → Reinstall Data Product* on the agreement.
-- Renaming or removing tables broke the installed product here: BDC kept serving the old definition after the
-  republish, and the reinstall deployed the old tables, which no longer existed in the share. For such a
-  change, publish a new major version instead (`ordId` `...:v2`, `version` `2.0.0`) and install that.
+- Renaming or removing tables: republish, wait until the catalog sync has finished, then *⋯ → Reinstall
+  Data Product*. An earlier reinstall right after a rename deployed the old definition. The reinstall adds remote tables under the new names but leaves the old ones in the space; they point at tables
+  that are gone. On 2026-11-06 the reinstall of 137 tables took over 30 minutes with only a *Started*
+  notification and no progress shown anywhere; wait for *Completed* before trying anything else.
+- BDC Connect takes only `title`, `shortDescription` and `description` from the ORD document. It sets the
+  ORD ID (`sap.databricks:dataProduct:<share>:v1`) and version 1.0.0 itself and ignores `ordId` or `version`
+  sent with the share. A new major version is not possible; a new `share_name` gives a separate data product.
 
 **Removing everything**
 1. Remove the `bdc_*` tasks from the import job, or the next schema change publishes again.

@@ -30,7 +30,7 @@ from bdc_tables import schema_fingerprint, share_tables, store_published
 
 dbutils.widgets.text("catalog", "factory", "Source catalog")
 dbutils.widgets.text("schema", "adhoc-demo_eu-latest-t2180777119", "Source schema")
-dbutils.widgets.text("share_name", "cumulocity_adhoc_demo", "Share / data product name")
+dbutils.widgets.text("share_name", "cumulocity_t2180777119", "Share / data product name")
 dbutils.widgets.text("recipient", "sap-business-data-cloud", "BDC recipient")
 
 catalog = dbutils.widgets.get("catalog")
@@ -48,10 +48,9 @@ short_description = "All Cumulocity data of the tenant: alarms, events, inventor
 description = (
     "Everything Cumulocity Streaming Lake Ingestion writes for the tenant, imported from the Iceberg catalog "
     "every few minutes. Schemas mirror the Iceberg namespaces: cdc_* hold the change log (one row per create, "
-    "update or delete), latest_* the current state per object. curated.measurement has every measurement "
+    "update or delete), latest_* the current state per object. curated.curated_measurement has every measurement "
     "series in long format (time, source, fragment, series, value, unit) for analytic models."
 )
-version = "1.1.0"  # the major version must match the :v1 in the ordId
 
 print(f"Share '{share_name}' with {len(tables)} table(s) from {catalog}.{schema}:")
 for source, alias in sorted(tables.items()):
@@ -84,25 +83,13 @@ from bdc_connect_sdk.utils import csn_generator
 
 bdc_connect_client = BdcConnectClient(DatabricksClient(dbutils, recipient))
 
+# BDC Connect takes only title, shortDescription and description. It generates the ORD ID itself
+# (sap.databricks:dataProduct:<share>:v1, version 1.0.0) and ignores ordId, version or dataProducts sent here.
 open_resource_discovery_information = {
     "@openResourceDiscoveryV1": {
         "title": title,
         "shortDescription": short_description,
         "description": description,
-        "version": version,
-        "releaseStatus": "active",
-        "visibility": "public",
-        "dataProducts": [
-            {
-                "ordId": f"sap.databricks:dataProduct:{share_name}:v1",
-                "title": title,
-                "shortDescription": short_description,
-                "description": description,
-                "version": version,  # shown in the BDC catalog
-                "releaseStatus": "active",
-                "visibility": "public",
-            }
-        ],
     }
 }
 
