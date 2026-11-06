@@ -76,7 +76,7 @@ tables:
 
 | Task | Does |
 |---|---|
-| `bdc_check` | After a successful import, computes a SHA-256 fingerprint over the selected tables, their names in the share, columns, types and nullability, and compares it with the last publish (`_bdc_publish_state`). Sets the task value `changed`. Takes seconds, installs nothing. |
+| `bdc_check` | After `import` and `measurement_fact` succeed, computes a SHA-256 fingerprint over the selected tables, their names in the share, columns, types and nullability, and compares it with the last publish (`_bdc_publish_state`). Sets the task value `changed`. Takes seconds, installs nothing. |
 | `bdc_changed` | Condition: `{{tasks.bdc_check.values.changed}} == "true"`. |
 | `bdc_publish` | Runs `bdc_connect` (share contents, ORD, CSN, publish) and stores the new fingerprint. |
 
@@ -107,7 +107,9 @@ removes them from the data product; consumers in Datasphere that use them break.
    below).
 4. Run `bdc_connect`. The output lists every table (`source -> schema.table`), then `Share registered.`,
    `CSN uploaded.` and `Data product '...' published`.
-5. Optional, automatic republish: add the tasks `bdc_check`, `bdc_changed` and `bdc_publish` (table above).
+5. Automatic republish: add the tasks `bdc_check` (notebook `CheckBdcSchema`, depends on `import` and
+   `measurement_fact`), `bdc_changed` (condition task) and `bdc_publish` (notebook `bdc_connect`, depends on
+   `bdc_changed` = true). Set up in the import job since 2026-11-06.
 
 **2. BDC: wait for the catalog**
 1. BDC cockpit, *Catalog & Marketplace → Metadata Extractions*: wait until `databricks-6918e1f0` shows
@@ -129,13 +131,26 @@ removes them from the data product; consumers in Datasphere that use them break.
 6. *Data Builder →* space `CUMULOCITY`: every table is a *Remote Table*, status *Deployed*. Open one,
    *Data Viewer*, and compare the row count with Databricks.
 
-**Changing the data product later**
-- Additive changes (new tables or columns) need a republish (automatic with the `bdc_*` tasks), a catalog
-  sync, then *Check for Schema Changes* or *⋯ → Reinstall Data Product* on the agreement.
-- Renaming or removing tables: republish, wait until the catalog sync has finished, then *⋯ → Reinstall
-  Data Product*. An earlier reinstall right after a rename deployed the old definition. The reinstall adds remote tables under the new names but leaves the old ones in the space; they point at tables
-  that are gone. On 2026-11-06 the reinstall of 137 tables took over 30 minutes with only a *Started*
-  notification and no progress shown anywhere; wait for *Completed* before trying anything else.
+**Changing the data product later: what runs automatically and what is manual**
+
+| Change | Databricks | BDC catalog | Datasphere |
+|---|---|---|---|
+| New rows in existing tables | Automatic: `import` every 8 minutes | Nothing to do | Nothing to do: Federation reads the share live |
+| New table (new fragment or Iceberg table), new column, changed type | Automatic: `import` creates or alters the table, `bdc_check` sees the new fingerprint, `bdc_publish` republishes | Automatic: the publish starts a metadata extraction (about 5 minutes) | **Manual**: *Data Product Access → Agreements →* the agreement *→ Check for Schema Changes* or *⋯ → Reinstall Data Product* |
+| Renamed or removed table | Automatic, same as above; renames come from `bdc_tables.py` changes, which you deploy | Automatic | **Manual** reinstall, as above; the old remote tables stay in the SAP-managed space (only SAP support removes them) |
+
+Datasphere has no API or CLI command for installing, reinstalling or updating a BDC data product (checked
+2026-11-06): the `datasphere` CLI covers spaces, modeling objects, tasks, users and the Data Marketplace, not
+BDC agreements. The Datasphere step stays a click.
+
+Notes on the manual step:
+- Wait until *Metadata Extractions* shows `databricks-6918e1f0` *Synchronized* with a time after the publish
+  (the `bdc_publish` task's end time). An earlier reinstall right after a rename deployed the old definition.
+- A reinstall of 137 tables took over 30 minutes on 2026-11-06 and showed only *Data Product Installation:
+  Started* until it finished; no progress appears anywhere. Wait for *Completed* (saved objects equal to
+  deployed objects) before trying anything else.
+- After a rename, the reinstall adds remote tables under the new names and leaves the old ones in the space;
+  they point at tables that are gone and can't be deleted from Datasphere.
 - BDC Connect takes only `title`, `shortDescription` and `description` from the ORD document. It sets the
   ORD ID (`sap.databricks:dataProduct:<share>:v1`) and version 1.0.0 itself and ignores `ordId` or `version`
   sent with the share. A new major version is not possible; a new `share_name` gives a separate data product.
@@ -143,8 +158,8 @@ removes them from the data product; consumers in Datasphere that use them break.
 **Removing everything**
 1. Remove the `bdc_*` tasks from the import job, or the next schema change publishes again.
 2. Datasphere, *Data Product Access → Agreements →* the agreement *→ End Agreement* (uninstalls it).
-3. Run `bdc_delete`: deletes the share and data product in BDC, then drops the Delta Share and
-   `_bdc_publish_state`. The catalog entry disappears with the next metadata extraction.
+3. Run `bdc_delete`: deletes the share and data product in BDC, then drops the Delta Share and the
+   share's rows in `_bdc_publish_state`. The catalog entry disappears with the next metadata extraction.
 
 ## Grafana
 
