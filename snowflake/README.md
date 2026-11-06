@@ -81,7 +81,9 @@ one column per series. The table name is the source name without `c8y_`, in uppe
 object becomes the value as `DOUBLE` under the series name (`WINDING_TEMP_C`) and its unit
 (`WINDING_TEMP_C_UNIT`). Join `SOURCE` of the measurement, event and alarm tables to `INVENTORY.ID`.
 Column names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects outside the measurement tables
-JSON text. All tables sit in one schema, and Datasphere names them `<share>:v1.<TABLE>`, so the build
+JSON text. Repeated underscores in column names collapse to one (`c8y_Context.id__0` becomes
+`ID_0`): with an element `ID__0` in the CSN, the publish succeeded but the BDC metadata extraction
+failed with "missing required property (dataProduct-entities)" (2026-11-06). All tables sit in one schema, and Datasphere names them `<share>:v1.<TABLE>`, so the build
 procedure stops when two sources map to the same name. Difference from the Databricks product: the
 change logs of alarms, inventory, events and operations are reduced to the current state per `ID`;
 rows whose latest change is a delete are left out.
@@ -142,7 +144,8 @@ BDC ExperienceCenter EU10):
 
 The CSN is already Datasphere-compatible: timestamps are `cds.Timestamp`, there are no structured
 columns (arrays and objects are JSON text), and all tables sit in one schema, so the remote table
-names `<share>:v1.<TABLE>` can't collide.
+names `<share>:v1.<TABLE>` can't collide. `SYSTEM$SAP_PUBLISH_DATA_PRODUCT` checks the CSN against the
+share: every shared table and column must be in it, with the same names.
 
 **Install in Datasphere** (same steps as for the Databricks product, see
 [../databricks/sap-bdc/README.md](../databricks/sap-bdc/README.md)):
