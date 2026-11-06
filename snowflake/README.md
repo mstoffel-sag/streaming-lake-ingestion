@@ -7,7 +7,7 @@ credentials vended by Polaris.
 
 ```
 Snowflake (SAP Snowflake account in the BDC formation)
-    ├── CUMULOCITY_BDC_<T>      data product: ALARM, INVENTORY, one table per fragment (dynamic Iceberg V3)
+    ├── CUMULOCITY_BDC_<T>      data product: alarms, events, operations, inventory, measurements (dynamic Iceberg V3)
     │       └── share ──► Zerocopy Connector ──► SAP BDC catalog
     ├── CUMULOCITY_<T>          CURATED (dynamic tables, series view), OPS (procedures, task graph, alert)
     └── CUMULOCITY_ICEBERG_<T>  catalog-linked, read-only
@@ -23,7 +23,7 @@ the Snowpark session, so they run as Snowflake Notebooks, not in a local Jupyter
 | Notebook | Purpose |
 |---|---|
 | `cumulocity_build_up.ipynb` | Creates everything for one tenant: warehouse, catalog integration, linked database, curated dynamic tables, measurement series view, schema-change task, optional e-mail alert |
-| `sap-bdc/cumulocity_bdc_data_product.ipynb` | Publishes alarms, inventory and sewage pump measurements as a data product to SAP BDC and republishes it on schema changes (see below) |
+| `sap-bdc/cumulocity_bdc_data_product.ipynb` | Publishes alarms, events, operations, inventory and all measurements as a data product to SAP BDC and republishes it on schema changes (see below) |
 | `cumulocity_query_examples.ipynb` | Read-only queries: devices, alarms, measurements, events, device timeline |
 | `cumulocity_tear_down.ipynb` | Removes all objects of one tenant, the data product included (irreversible) |
 | `grafana/` | Grafana stack on `CURATED` (see below) |
@@ -65,15 +65,30 @@ associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed
 |---|---|---|---|
 | `ALARM` | `cdc_alarm."alarm"` | alarm, current state | `ID` |
 | `INVENTORY` | `cdc_inventory."inventory"` | managed object, current state (deleted ones excluded) | `ID` |
-| `SEWPUMP_<FRAGMENT>`, for example `SEWPUMP_WINDINGTEMPC` | one per `cdc_measurement."c8y_SewPump_*"` table (19) | measurement | `ID` |
+| `INVENTORY_<FRAGMENT>`, for example `INVENTORY_AGENT` | one per other `cdc_inventory` table (`c8y_Agent`) | managed object with that fragment, current state | `ID` (= `INVENTORY.ID`) |
+| `EVENT` | `cdc_event."event"` | event | `ID` |
+| `EVENT_<FRAGMENT>`, for example `EVENT_WORKORDER` | one per other `cdc_event` table (`c8y_WorkOrder`) | event with that fragment | `ID` (= `EVENT.ID`) |
+| `OPERATION` | `cdc_operation."operation"` | operation, current state | `ID` |
+| `<FRAGMENT>`, for example `SEWPUMP_WINDINGTEMPC`, `AERLANE_HEALTH` | one per `cdc_measurement` table matching `measurement_tables` (default `%`, all) | measurement | `ID` |
+
+New tables in these Iceberg namespaces join automatically. Not shared: `cdc_rejected` (payloads the
+ingestion rejected), `internal` (ingestion state) and the `latest_*` tables, which Snowflake can't
+read ("Equality deletes on Iceberg tables are not supported"); `INVENTORY_*` carries the same current
+state, built from the change log.
 
 The measurement tables keep the lake layout, as in the Databricks product: one table per fragment,
 one column per series. The table name is the source name without `c8y_`, in upper case. The series
 object becomes the value as `DOUBLE` under the series name (`WINDING_TEMP_C`) and its unit
-(`WINDING_TEMP_C_UNIT`). Join `SOURCE` of the measurement and alarm tables to `INVENTORY.ID`. Column
-names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects in `ALARM` and `INVENTORY` JSON
-text. Difference from the Databricks product: `ALARM` holds the current state per alarm, not the
-change log.
+(`WINDING_TEMP_C_UNIT`). Join `SOURCE` of the measurement, event and alarm tables to `INVENTORY.ID`.
+Column names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects outside the measurement tables
+JSON text. All tables sit in one schema, and Datasphere names them `<share>:v1.<TABLE>`, so the build
+procedure stops when two sources map to the same name. Difference from the Databricks product: the
+change logs of alarms, inventory, events and operations are reduced to the current state per `ID`;
+rows whose latest change is a delete are left out.
+
+Every shared table is a dynamic table that refreshes within `target_lag` on the tenant's warehouse;
+with all measurement fragments that is over 100 tables. Raise `target_lag` or narrow
+`measurement_tables` (for example `c8y_SewPump%`) if warehouse credits matter more than freshness.
 
 ### 1. In Snowflake and BDC
 
@@ -101,10 +116,10 @@ task graph below the existing schema-change task. All tasks are serverless.
 | Task | Runs | Does |
 |---|---|---|
 | `OPS.REBUILD_ON_SCHEMA_CHANGE` | every 15 min (root) | Rebuilds `CURATED` when source columns change |
-| `OPS.BDC_CHECK` | after the root | Rebuilds the shared tables when the columns of alarm, inventory or the `c8y_SewPump_*` tables change. Compares an MD5 fingerprint of the shared schema (table, column, type, precision, scale, nullability) with the last publish and returns `changed` or `unchanged` |
+| `OPS.BDC_CHECK` | after the root | Rebuilds the shared tables when the columns of any alarm, inventory, event, operation or selected measurement table change. Compares an MD5 fingerprint of the shared schema (table, column, type, precision, scale, nullability) with the last publish and returns `changed` or `unchanged` |
 | `OPS.BDC_PUBLISH` | after `BDC_CHECK`, `WHEN` it returned `changed` | Generates the CSN, publishes, stores the fingerprint in `OPS.BDC_STATE` |
 
-A new inventory column or sewage pump fragment changes the CSN: the check rebuilds the tables (a new
+A new inventory column, event type or measurement fragment changes the CSN: the check rebuilds the tables (a new
 fragment gets its own table, a removed one is dropped) and the product is republished within one
 cycle. To force a
 republish, run `CALL CUMULOCITY_<T>.OPS.BDC_PUBLISH()`. BDC accepts a republish under the same
