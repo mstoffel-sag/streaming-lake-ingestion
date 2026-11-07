@@ -86,7 +86,13 @@ JSON text. Repeated underscores in column names collapse to one (`c8y_Context.id
 failed with "missing required property (dataProduct-entities)" (2026-11-06). All tables sit in one schema, and Datasphere names them `<share>:v1.<TABLE>`, so the build
 procedure stops when two sources map to the same name. Difference from the Databricks product: the
 change logs of alarms, inventory, events and operations are reduced to the current state per `ID`;
-rows whose latest change is a delete are left out.
+rows whose latest change is a delete are left out. The latest row is the one with the newest
+`lastUpdated`, then the newest other timestamp column of the table: Cumulocity updates
+`c8y_Availability.lastMessage` without changing `lastUpdated`, so one device had 381 change rows with
+the same `lastUpdated` (2026-11-07). Without the second key, `INVENTORY_AVAILABILITY` returned an
+arbitrary one of them. `INVENTORY_ACTIVEALARMSSTATUS` has the same ties but no other timestamp, and
+Snowflake exposes no write order for Iceberg rows, so its counts can be outdated; count open alarms
+from `ALARM` instead.
 
 Every shared table is a dynamic table that refreshes within `target_lag` on the tenant's warehouse;
 with all measurement fragments that is over 100 tables. Raise `target_lag` or narrow
@@ -121,9 +127,12 @@ task graph below the existing schema-change task. All tasks are serverless.
 | `OPS.BDC_CHECK` | after the root | Rebuilds the shared tables when the columns of any alarm, inventory, event, operation or selected measurement table change. Compares an MD5 fingerprint of the shared schema (table, column, type, precision, scale, nullability) with the last publish and returns `changed` or `unchanged` |
 | `OPS.BDC_PUBLISH` | after `BDC_CHECK`, `WHEN` it returned `changed` | Generates the CSN, publishes, stores the fingerprint in `OPS.BDC_STATE` |
 
-A new inventory column, event type or measurement fragment changes the CSN: the check rebuilds the tables (a new
-fragment gets its own table, a removed one is dropped) and the product is republished within one
-cycle. To force a
+A new inventory column, event type or measurement fragment changes the CSN: the check runs
+`BDC_CREATE_TABLES` (a new fragment gets its own table, a removed one is dropped) and the product is
+republished within one cycle. `BDC_CREATE_TABLES` replaces only tables whose definition changed: each
+table's comment ends with an MD5 tag of its properties and `SELECT`, and tables with the current tag
+are left alone. Replacing all tables would make every table new on the SAP side (see the reinstall
+delay below). To force a
 republish, run `CALL CUMULOCITY_<T>.OPS.BDC_PUBLISH()`. BDC accepts a republish under the same
 version 1.0.0.
 
@@ -181,6 +190,27 @@ next morning (2026-11-07) deployed 119 of 119 in 8 minutes, and Datasphere then 
 within the dynamic tables' lag (`SEWPUMP_WINDINGTEMPC`: 219,351 rows up to 09:14 UTC in Datasphere,
 219,422 up to 09:21 in Snowflake at 09:27). If a reinstall reports "could not be found", wait and
 retry; check the freshness of an installed table first.
+
+**A new measurement fragment end to end** (2026-11-07, three `c8y_BdcFlowTest` measurements with the
+series `TempC` on device 9682000, times UTC):
+
+| Time | Step |
+|---|---|
+| 13:18:09–13:18:19 | Measurements created in Cumulocity |
+| 13:20:09 | Iceberg table `cdc_measurement."c8y_BdcFlowTest"` created |
+| 13:22:16 | `REBUILD_ON_SCHEMA_CHANGE` starts (15-minute schedule) |
+| 13:23:50 | `BDC_CHECK` creates `BDCFLOWTEST`; the other 119 tables stay untouched |
+| 13:24:55 | `BDC_PUBLISH` succeeds |
+| 13:25:50 | BDC metadata extraction `snowflake-7df47c68` *Synchronized*, 0 errors |
+| 13:35 | Datasphere: *Check for Schema Changes* reports "Up to Date" (it doesn't add new tables); *Reinstall Data Product*, Federation |
+| 13:41 | Reinstall completed: 120 saved, 120 deployed |
+| 13:45 | `"SNOWFLAKE7DF47C68.cumulocity_adhoc_demo:v1.BDCFLOWTEST"` returns the 3 rows (`TEMP_C` 21.5, 22, 22.5, unit `C`) |
+
+From measurement to the published product took under 7 minutes; the rest is the manual reinstall.
+Here the reinstall worked 10 minutes after the publish, unlike the failed one on 2026-11-06, which
+came 75 minutes after a publish that added 98 tables and replaced 21. The 4 tables replaced at
+10:21 the same day (`ALARM`, `EVENT`, `INVENTORY`, `INVENTORY_AVAILABILITY`) were also current in
+Datasphere after this reinstall (`INVENTORY_AVAILABILITY.LAST_MESSAGE` 13:29 at 13:46).
 
 After `OPS.BDC_PUBLISH` republishes a schema change, the Datasphere side stays manual, as for
 Databricks: *Data Product Access → Agreements →* the agreement *→ Check for Schema Changes* or
