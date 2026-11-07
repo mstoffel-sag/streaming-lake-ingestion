@@ -170,12 +170,17 @@ Tested 2026-11-06: the install with Federation took about 7 minutes and deployed
 (`ALARM`, `INVENTORY`, 19 `SEWPUMP_*`) with no type errors. `SEWPUMP_WINDINGTEMPC` returned 207,856 rows
 in Datasphere.
 
-**Open issue (2026-11-06):** after the product grew to 119 tables, BDC extracted all of them, but
-*Reinstall Data Product* failed: 119 objects saved, 0 deployed, "Remote object
-'cumulocity_adhoc_demoCUMULOCITY<TABLE>' in connection 'DWC_SNOWFLAKE7DF47C68.SNOWFLAKE7DF47C68' could
-not be found" for the new tables. The 21 tables installed earlier still answer, but with the data of
-15:39 UTC (207,856 rows in `SEWPUMP_WINDINGTEMPC`, while Snowflake had 209,458): the SAP side doesn't
-follow tables that `BDC_CREATE_TABLES` replaces (`CREATE OR REPLACE`) or adds to the share.
+**After adding or replacing tables, wait before reinstalling.** On 2026-11-06 the product grew to 119
+tables and BDC extracted them, but *Reinstall Data Product* about 75 minutes after the publish failed:
+119 objects saved, 0 deployed, "Remote object 'cumulocity_adhoc_demoCUMULOCITY<TABLE>' in connection
+'DWC_SNOWFLAKE7DF47C68.SNOWFLAKE7DF47C68' could not be found" for the new tables. The installed tables
+kept returning a snapshot from before the change (`SEWPUMP_WINDINGTEMPC`: 207,856 rows up to 15:39 UTC,
+while Snowflake had 209,458 rows up to 18:06), even an hour later. The SAP side picks up tables that
+`BDC_CREATE_TABLES` adds or replaces (`CREATE OR REPLACE`) only after a delay; the same reinstall the
+next morning (2026-11-07) deployed 119 of 119 in 8 minutes, and Datasphere then matched Snowflake
+within the dynamic tables' lag (`SEWPUMP_WINDINGTEMPC`: 219,351 rows up to 09:14 UTC in Datasphere,
+219,422 up to 09:21 in Snowflake at 09:27). If a reinstall reports "could not be found", wait and
+retry; check the freshness of an installed table first.
 
 After `OPS.BDC_PUBLISH` republishes a schema change, the Datasphere side stays manual, as for
 Databricks: *Data Product Access → Agreements →* the agreement *→ Check for Schema Changes* or
