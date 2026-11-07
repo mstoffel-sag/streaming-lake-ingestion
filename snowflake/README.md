@@ -90,9 +90,21 @@ rows whose latest change is a delete are left out. The latest row is the one wit
 `lastUpdated`, then the newest other timestamp column of the table: Cumulocity updates
 `c8y_Availability.lastMessage` without changing `lastUpdated`, so one device had 381 change rows with
 the same `lastUpdated` (2026-11-07). Without the second key, `INVENTORY_AVAILABILITY` returned an
-arbitrary one of them. `INVENTORY_ACTIVEALARMSSTATUS` has the same ties but no other timestamp, and
-Snowflake exposes no write order for Iceberg rows, so its counts can be outdated; count open alarms
-from `ALARM` instead.
+arbitrary one of them. `c8y_ActiveAlarmsStatus` has the same ties (34 of 35 managed objects) and no
+other timestamp, and Snowflake exposes no write order for Iceberg rows. So
+`INVENTORY_ACTIVEALARMSSTATUS` doesn't read the counters from the change log. It counts the
+uncleared (`ACTIVE`, `ACKNOWLEDGED`) alarms per severity from the alarm change log, for every managed
+object that has the fragment; `LAST_UPDATED` is the newest change of the fragment or of one of the
+object's alarms. Checked against Cumulocity on 2026-11-07 15:01 UTC: 33 of 39 objects with the
+fragment matched; 2 had an alarm raised or cleared after the newest alarm in the lake (14:59), and 4
+last changed before the ingestion started, so the lake has no row for them (one of these, 723200,
+shows a warning in the fragment without any open alarm). The counts are `NUMBER(38,0)`, and the CSN
+declares all numbers as `cds.Decimal(p, s)`. The publish rejected `cds.Integer64` for the
+`NUMBER(13,0)` that `COUNT_IF` returns ("does not match the provider type [decimal(13, 0)]"); with
+`NUMBER(19,0)` the publish passed, but the Datasphere reinstall failed twice with "MISMATCH IN DATA
+TYPE PRECISION" (input 19, actual 38). A reinstall 3 minutes after the `NUMBER(38,0)` publish (and 2
+minutes after BDC extracted it) still imported the precision-19 definition: Datasphere's copy of the
+CSN lags behind BDC. While a reinstall fails, the tables installed before stay as they were.
 
 Every shared table is a dynamic table that refreshes within `target_lag` on the tenant's warehouse;
 with all measurement fragments that is over 100 tables. Raise `target_lag` or narrow
