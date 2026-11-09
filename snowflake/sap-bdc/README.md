@@ -5,9 +5,9 @@
 associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed to
 `SYSTEM$SAP_PUBLISH_DATA_PRODUCT`.
 
-![Data flow of the Databricks and Snowflake data products into SAP Datasphere](../../sap-bdc-data-flow.png)
+![Data flow of the Databricks and Snowflake data products into SAP Datasphere](../../databricks/sap-bdc/img/sap-bdc-data-flow.png)
 
-Data flow of both data products; editable source: [sap-bdc-data-flow.drawio](../../sap-bdc-data-flow.drawio).
+Data flow of both data products; editable source: [sap-bdc-data-flow.drawio](../../databricks/sap-bdc/img/sap-bdc-data-flow.drawio).
 
 | Table in `CUMULOCITY_BDC_<T>.CUMULOCITY` | Source | One row per | Key |
 |---|---|---|---|
@@ -80,6 +80,9 @@ with all measurement fragments that is over 100 tables. Raise `target_lag` or na
 `measurement_tables` (for example `c8y_SewPump%`) if warehouse credits matter more than freshness.
 
 ## 1. In Snowflake and BDC
+
+Needs an SAP Snowflake account (or a Snowflake account connected through SAP BDC Connect for
+Snowflake) that is part of a BDC formation; not available on trial accounts.
 
 BDC accepts only Snowflake-managed Iceberg V3 tables (copy-on-write, `COMPATIBLE` serialization)
 with a primary key, one database per data product. The notebook creates them as dynamic Iceberg
@@ -195,8 +198,8 @@ Datasphere after this reinstall (`INVENTORY_AVAILABILITY.LAST_MESSAGE` 13:29 at 
 
 After `OPS.BDC_PUBLISH` republishes a schema change, the Datasphere side stays manual, as for
 Databricks: *Data Product Access → Agreements →* the agreement *→ Check for Schema Changes* or
-*Reinstall Data Product*. Remove the installation with *End Agreement* before the tear-down notebook
-drops the share.
+*Reinstall Data Product*. Remove the installation with *End Agreement* before
+`cumulocity_bdc_tear_down.ipynb` drops the share.
 
 ## From an Iceberg change to Datasphere
 
@@ -232,3 +235,13 @@ The delays and failures are all in the last step, on SAP's side:
 What we do about it: `BDC_CREATE_TABLES` replaces only changed tables, and column types stay stable. Expect
 schema changes to reach Datasphere after a manual reinstall, sometimes hours later. New rows need none of
 this.
+
+## Removing the data product
+
+1. Datasphere, *Data Product Access → Agreements →* the agreement *→ End Agreement* (uninstalls it).
+2. Run `cumulocity_bdc_tear_down.ipynb`: drops the `BDC_*` tasks, procedures and `BDC_STATE` from
+   `CUMULOCITY_<T>.OPS`, removes the share from the connector, drops the share and `CUMULOCITY_BDC_<T>`.
+   The schema-change task and `CURATED` keep running. The catalog entry in BDC may remain (SAP
+   documents no unpublish call).
+
+Run it before `../cumulocity_tear_down.ipynb`, which removes only what the build-up notebook created.

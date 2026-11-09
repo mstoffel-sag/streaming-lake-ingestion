@@ -1,15 +1,12 @@
 # Snowflake
 
 Query the Cumulocity Iceberg tables from Snowflake through a catalog-linked database on the
-Polaris REST catalog, publish a subset as a data product to SAP Business Data Cloud (BDC), and
-chart the measurements in Grafana. Data stays in Cumulocity storage; Snowflake reads it with
-credentials vended by Polaris.
+Polaris REST catalog and chart the measurements in Grafana. Data stays in Cumulocity storage;
+Snowflake reads it with credentials vended by Polaris.
 
 ```
-Snowflake (SAP Snowflake account in the BDC formation)
-    ├── CUMULOCITY_BDC_<T>      data product: alarms, events, operations, inventory, measurements (dynamic Iceberg V3)
-    │       └── share ──► Zerocopy Connector ──► SAP BDC catalog
-    ├── CUMULOCITY_<T>          CURATED (dynamic tables, series view), OPS (procedures, task graph, alert)
+Snowflake
+    ├── CUMULOCITY_<T>          CURATED (dynamic tables, series view), OPS (procedures, schema-change task, alert)
     └── CUMULOCITY_ICEBERG_<T>  catalog-linked, read-only
             └── Polaris REST Catalog  (OAuth2 client credentials)
                     └── S3  (vended credentials)
@@ -23,10 +20,10 @@ the Snowpark session, so they run as Snowflake Notebooks, not in a local Jupyter
 | Notebook | Purpose |
 |---|---|
 | `cumulocity_build_up.ipynb` | Creates everything for one tenant: warehouse, catalog integration, linked database, curated dynamic tables, measurement series view, schema-change task, optional e-mail alert |
-| `sap-bdc/cumulocity_bdc_data_product.ipynb` | Publishes alarms, events, operations, inventory and all measurements as a data product to SAP BDC and republishes it on schema changes ([sap-bdc/README.md](sap-bdc/README.md)) |
 | `cumulocity_query_examples.ipynb` | Read-only queries: devices, alarms, measurements, events, device timeline |
-| `cumulocity_tear_down.ipynb` | Removes all objects of one tenant, the data product included (irreversible) |
+| `cumulocity_tear_down.ipynb` | Removes all objects of one tenant (irreversible) |
 | `grafana/` | Grafana stack on `CURATED` (see below) |
+| `sap-bdc/` | SAP BDC data product ([README](sap-bdc/README.md)) |
 
 All object names end with the tenant ID, so several tenants can share one account.
 
@@ -36,8 +33,6 @@ All object names end with the tenant ID, so several tenants can share one accoun
 - Polaris catalog principal (OAuth2 client credentials), see
   [Obtaining Iceberg catalog credentials](https://cumulocity.com/docs/datahub/streaming-lake-ingestion/#obtaining-iceberg-catalog-credentials)
 - For alerting: a verified e-mail of a user in the account
-- For the data product: an SAP Snowflake account (or a Snowflake account connected through SAP BDC
-  Connect for Snowflake) that is part of a BDC formation; not available on trial accounts
 
 ## Usage
 
@@ -53,13 +48,6 @@ literal secret). Clear it before exporting or committing the notebook.
 `DEVICE_ID`, `FRAGMENT`, `SERIES`, `VALUE`, `UNIT`, `MEASUREMENT_ID`): one `UNION ALL` branch per
 series, so a filter on `SERIES` or `FRAGMENT` reads only the matching tables.
 `CURATED.DEVICE_SERIES` lists every device and series with its unit, count and time range.
-
-## SAP BDC data product
-
-`sap-bdc/cumulocity_bdc_data_product.ipynb` publishes the tenant's alarms, events, operations,
-inventory and measurements as a data product to SAP Business Data Cloud and republishes it on schema
-changes. Setup, tables, tasks, the Datasphere install and the steps from an Iceberg change to Datasphere:
-[sap-bdc/README.md](sap-bdc/README.md).
 
 ## Grafana
 

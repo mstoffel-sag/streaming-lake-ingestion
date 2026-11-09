@@ -9,7 +9,7 @@ The catalog vends S3 credentials, so no AWS keys are stored.
 | `IcebergIncrementalImport PyIceberg.ipynb` | Import via PyIceberg scans (**recommended**) |
 | `IcebergIncrementalImport DuckDB.ipynb` | Import via DuckDB `read_parquet` on new data files |
 | `grafana/` | Grafana stack on the SQL warehouse: measurement views, lookup refresh notebook, dashboard (see below) |
-| `sap-bdc/` | SAP BDC data product: Delta Share, publish to SAP Business Data Cloud, consumption in SAP Datasphere ([README](sap-bdc/README.md)) |
+| `sap-bdc/` | SAP BDC data product ([README](sap-bdc/README.md)) |
 
 ## Setup
 
@@ -41,11 +41,6 @@ Per table:
   scan tasks and applies equality deletes by sequence number (table-wide, not per partition).
 - **DuckDB** always reads new data files directly and ignores delete files. Faster for large
   append-only tables, but can re-import deleted or superseded rows. Use it only for append-only data.
-
-## SAP BDC data product
-
-Publishing the import tables as a data product to SAP Business Data Cloud and installing it in SAP Datasphere,
-including which steps run automatically in the import job and which stay manual: [sap-bdc/README.md](sap-bdc/README.md).
 
 ## Grafana
 
