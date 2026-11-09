@@ -96,6 +96,42 @@ removes them from the data product; consumers in Datasphere that use them break.
 6. *Data Builder →* space `CUMULOCITY`: every table is a *Remote Table*, status *Deployed*. Open one,
    *Data Viewer*, and compare the row count with Databricks.
 
+## Analytic Model for SAP Analytics Cloud
+
+SAP Analytics Cloud reads Analytic Models, not remote tables. Space `CUMULOCITY` has one on
+`curated_measurement`, built in the Data Builder on 2026-11-09:
+
+| Object | Type | Content |
+|---|---|---|
+| `DBX_DEVICE` *Device (Databricks)* | SQL view, Dimension | `latest_inventory_inventory`: `ID` (key, text `NAME`), `NAME`, `TYPE`, site and asset attributes |
+| `DBX_MEASUREMENT` *Measurement (Databricks)* | SQL view, Fact | `curated_measurement` plus `FRAGMENT_SERIES` and `DAY`; association `SOURCE` → `DBX_DEVICE.ID` |
+| `DBX_MEASUREMENT_AM` *Measurements (Databricks)* | Analytic Model | Fact `DBX_MEASUREMENT`, dimension Device; measures below |
+
+```sql
+-- DBX_DEVICE
+SELECT "id" AS "ID", "name" AS "NAME", "type" AS "TYPE", "site_code" AS "SITE_CODE",
+       "site_type" AS "SITE_TYPE", "operating_region" AS "OPERATING_REGION", "catchment" AS "CATCHMENT",
+       "process_stage" AS "PROCESS_STAGE", "asset_criticality" AS "ASSET_CRITICALITY",
+       "operational_status" AS "OPERATIONAL_STATUS"
+FROM "DATABRICKS6918E1F0.cumulocity_t2180777119:v1.latest_inventory_inventory"
+WHERE "id" IS NOT NULL
+
+-- DBX_MEASUREMENT
+SELECT "id" AS "ID", "fragment" AS "FRAGMENT", "series" AS "SERIES",
+       "fragment" || '.' || "series" AS "FRAGMENT_SERIES", "time" AS "TIME", TO_DATE("time") AS "DAY",
+       "source" AS "SOURCE", "unit" AS "UNIT", "value" AS "VALUE", "value" AS "VALUE_MIN",
+       "value" AS "VALUE_MAX", 1 AS "SAMPLES"
+FROM "DATABRICKS6918E1F0.cumulocity_t2180777119:v1.curated_measurement"
+```
+
+Measures: `VALUE` (SUM), `VALUE_MIN` (MIN), `VALUE_MAX` (MAX), all *Quantity with Unit* on `UNIT`
+(semantic type *Unit of Measure*); `SAMPLES` (SUM, the row count); calculated *Average Value* =
+`VALUE / SAMPLES`. Aggregating the values across series with different units shows `•`, so filter
+or group by *Fragment and Series* (the Grafana `series` variable); *Device* (the `device` variable)
+shows device names through the text association. The preview returned all 14.65 million rows and per
+series min, max and average (for example `air_flow_nm3h`: 125,246 samples, average 5,403.8 Nm³/h).
+Each query runs live against the Delta Share (Federation).
+
 ## From an Iceberg change to Datasphere
 
 | # | Step | How | Time |
