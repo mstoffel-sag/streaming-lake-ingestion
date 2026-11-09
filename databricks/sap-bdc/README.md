@@ -3,6 +3,10 @@
 Publishes the tables of the Databricks import ([../README.md](../README.md)) as a data product to SAP
 Business Data Cloud, consumable in SAP Datasphere.
 
+![Data flow of the Databricks and Snowflake data products into SAP Datasphere](../../sap-bdc-data-flow.png)
+
+Data flow of both data products; editable source: [sap-bdc-data-flow.drawio](../../sap-bdc-data-flow.drawio).
+
 | File | Purpose |
 |---|---|
 | `bdc_connect.py` | Creates a Delta Share from the import tables and publishes it as a data product to SAP Business Data Cloud |

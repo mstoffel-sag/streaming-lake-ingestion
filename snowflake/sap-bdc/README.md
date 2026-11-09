@@ -5,6 +5,10 @@
 associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed to
 `SYSTEM$SAP_PUBLISH_DATA_PRODUCT`.
 
+![Data flow of the Databricks and Snowflake data products into SAP Datasphere](../../sap-bdc-data-flow.png)
+
+Data flow of both data products; editable source: [sap-bdc-data-flow.drawio](../../sap-bdc-data-flow.drawio).
+
 | Table in `CUMULOCITY_BDC_<T>.CUMULOCITY` | Source | One row per | Key |
 |---|---|---|---|
 | `ALARM` | `cdc_alarm."alarm"` | alarm, current state | `ID` |
