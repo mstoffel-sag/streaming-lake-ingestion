@@ -59,7 +59,8 @@ series, so a filter on `SERIES` or `FRAGMENT` reads only the matching tables.
 `sap-bdc/cumulocity_bdc_data_product.ipynb` publishes the same content as the Databricks data product
 (`databricks/sap-bdc/bdc_connect.py`) through the native SAP Snowflake mechanism: a Snowflake share
 associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed to
-`SYSTEM$SAP_PUBLISH_DATA_PRODUCT`.
+`SYSTEM$SAP_PUBLISH_DATA_PRODUCT`. The steps from an Iceberg change to Datasphere, with times, and where
+they get stuck: [sap-bdc/README.md](sap-bdc/README.md).
 
 | Table in `CUMULOCITY_BDC_<T>.CUMULOCITY` | Source | One row per | Key |
 |---|---|---|---|

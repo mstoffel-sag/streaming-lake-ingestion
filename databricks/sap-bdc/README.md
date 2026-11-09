@@ -96,6 +96,30 @@ removes them from the data product; consumers in Datasphere that use them break.
 6. *Data Builder →* space `CUMULOCITY`: every table is a *Remote Table*, status *Deployed*. Open one,
    *Data Viewer*, and compare the row count with Databricks.
 
+## From an Iceberg change to Datasphere
+
+| # | Step | How | Time |
+|---|---|---|---|
+| 1 | Lake → Delta tables | Import job copies Iceberg to Delta every 8 minutes (`mergeSchema` for new columns) | ≤ 8 min |
+| 2 | `bdc_check` → `bdc_changed` | Same job; compares a SHA-256 fingerprint with `_bdc_publish_state` | seconds |
+| 3 | `bdc_publish` | Updates the Delta Share, ORD and CSN, then publishes | ~1 min |
+| 4 | BDC metadata extraction | Starts by itself after the publish | ~5 min |
+| 5 | Datasphere: *Check for Schema Changes* or *Reinstall Data Product* | **Manual**, no API | 30+ min for 137 tables (2026-11-06) |
+| | New rows only | Import every 8 minutes; Federation reads the share live | ≤ 8 min, no steps 2–5 |
+
+Steps 1 to 4 take about 15 minutes. The delays and failures are in step 5, on SAP's side:
+
+- **Manual.** Datasphere has no API or CLI for the install step (see below).
+- **SAP's side lags behind BDC, sometimes by hours.** The new product stayed *Entitlement: Invalid* from
+  2026-11-05 until the next morning, while BDC's extraction runs hung. A reinstall right after a rename
+  deployed the old definition. Nothing on our side shows or triggers this; wait and retry.
+- **Installed tables are rigid.** Renamed tables leave orphaned remote tables that only SAP support
+  removes. With the Snowflake product, a reinstall also couldn't change a column's type ("MISMATCH IN DATA
+  TYPE PRECISION/SCALE"); keep column types stable here too.
+- **All or nothing.** One failing table fails the whole reinstall.
+
+The Snowflake data product goes through the same Datasphere step: [../../snowflake/sap-bdc/README.md](../../snowflake/sap-bdc/README.md).
+
 **Changing the data product later: what runs automatically and what is manual**
 
 | Change | Databricks | BDC catalog | Datasphere |
