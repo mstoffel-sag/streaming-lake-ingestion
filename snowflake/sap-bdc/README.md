@@ -14,6 +14,7 @@ associated with the BDC Zerocopy Connector, ORD metadata and a CSN schema passed
 | `EVENT_<FRAGMENT>`, for example `EVENT_WORKORDER` | one per other `cdc_event` table (`c8y_WorkOrder`) | event with that fragment | `ID` (= `EVENT.ID`) |
 | `OPERATION` | `cdc_operation."operation"` | operation, current state | `ID` |
 | `<FRAGMENT>`, for example `SEWPUMP_WINDINGTEMPC`, `AERLANE_HEALTH` | one per `cdc_measurement` table matching `measurement_tables` (default `%`, all) | measurement | `ID` |
+| `MEASUREMENT` | every series of the same `cdc_measurement` tables, long format | measurement and series | `ID`, `FRAGMENT`, `SERIES` |
 
 New tables in these Iceberg namespaces join automatically. Not shared: `cdc_rejected` (payloads the
 ingestion rejected), `internal` (ingestion state) and the `latest_*` tables, which Snowflake can't
@@ -24,6 +25,13 @@ The measurement tables keep the lake layout, as in the Databricks product: one t
 one column per series. The table name is the source name without `c8y_`, in upper case. The series
 object becomes the value as `DOUBLE` under the series name (`WINDING_TEMP_C`) and its unit
 (`WINDING_TEMP_C_UNIT`). Join `SOURCE` of the measurement, event and alarm tables to `INVENTORY.ID`.
+`MEASUREMENT` holds the same values in long format, `ID, FRAGMENT, SERIES, TIME, SOURCE, VALUE, UNIT`,
+with the source names (`FRAGMENT` = `c8y_SewPump_WindingTempC`, `SERIES` = `winding_temp_c`). It is
+the fact for an Analytic Model in Datasphere and for SAP Analytics Cloud, which filter rows but can't
+switch tables the way the Grafana dashboard does. The Databricks product has the same table as
+`curated.curated_measurement`. A new fragment or series changes its query, so `BDC_CREATE_TABLES`
+replaces `MEASUREMENT` together with adding the new table; until the SAP side picks up the replaced
+table (see *Where it gets stuck* below), Datasphere may serve it stale.
 Column names are `UPPER_SNAKE_CASE`, timestamps UTC, arrays and objects outside the measurement tables
 JSON text. Repeated underscores in column names collapse to one (`c8y_Context.id__0` becomes
 `ID_0`): with an element `ID__0` in the CSN, the publish succeeded but the BDC metadata extraction
