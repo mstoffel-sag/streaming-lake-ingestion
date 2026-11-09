@@ -105,18 +105,47 @@ SAP Analytics Cloud reads Analytic Models, not remote tables. Space `CUMULOCITY`
 |---|---|---|
 | `DBX_DEVICE` *Device (Databricks)* | SQL view, Dimension | `latest_inventory_inventory`: `ID` (key, text `NAME`), `NAME`, `TYPE`, site and asset attributes |
 | `DBX_MEASUREMENT` *Measurement (Databricks)* | SQL view, Fact | `curated_measurement` plus `FRAGMENT_SERIES` and `DAY`; association `SOURCE` → `DBX_DEVICE.ID` |
-| `DBX_MEASUREMENT_AM` *Measurements (Databricks)* | Analytic Model | Fact `DBX_MEASUREMENT`, dimension Device; measures below |
+| `DBX_MEASUREMENT_AM` *Measurements (Databricks)* | Analytic Model | Fact `DBX_MEASUREMENT`, dimension Device, calculated Average Value |
+
+All three are in Datasphere *Data Builder →* space `CUMULOCITY`. Each step ends with *Deploy*: the
+first deploy asks for the name in a *Save* dialog; if the status still says *Not Deployed* afterwards,
+click *Deploy* again.
+
+**1. Find the source tables.** Search the Data Builder for `curated`: the Databricks tables are remote
+tables in the SAP-managed space `DATABRICKS6918E1F0`, shared into `CUMULOCITY`. No reinstall is needed
+as long as `curated_measurement` shows *Deployed*.
+
+![Remote table curated_measurement in the Data Builder](img/01-remote-table.jpg)
+
+**2. Device dimension `DBX_DEVICE`.** *New SQL View*. Dragging a table from the *Repository* panel into
+the editor inserts its full name, `"DATABRICKS6918E1F0.cumulocity_t2180777119:v1.<table>"`.
+
+![Dragging latest_inventory_inventory into the SQL editor](img/02-drag-source.jpg)
+
+Enter the SQL, set *Business Name* `Device (Databricks)`, *Technical Name* `DBX_DEVICE`, *Semantic
+Usage* **Dimension**, then *Validate SQL* (shield icon above the editor):
 
 ```sql
--- DBX_DEVICE
 SELECT "id" AS "ID", "name" AS "NAME", "type" AS "TYPE", "site_code" AS "SITE_CODE",
        "site_type" AS "SITE_TYPE", "operating_region" AS "OPERATING_REGION", "catchment" AS "CATCHMENT",
        "process_stage" AS "PROCESS_STAGE", "asset_criticality" AS "ASSET_CRITICALITY",
        "operational_status" AS "OPERATIONAL_STATUS"
 FROM "DATABRICKS6918E1F0.cumulocity_t2180777119:v1.latest_inventory_inventory"
 WHERE "id" IS NOT NULL
+```
 
--- DBX_MEASUREMENT
+![DBX_DEVICE: SQL and properties](img/03-device-view.jpg)
+
+In *Attributes → Edit* (pencil): tick `ID` as key, rename `ID` / `NAME` to *Device ID* / *Device
+Name*, set `NAME` to semantic type **Text** and `ID`'s *Text / Association* to *Device Name*, so SAC
+shows names instead of IDs. *Deploy*.
+
+![DBX_DEVICE attributes: key, Text and text association](img/04-device-attributes.jpg)
+
+**3. Measurement fact `DBX_MEASUREMENT`.** *New SQL View*, *Business Name* `Measurement (Databricks)`,
+*Technical Name* `DBX_MEASUREMENT`, *Semantic Usage* **Fact**:
+
+```sql
 SELECT "id" AS "ID", "fragment" AS "FRAGMENT", "series" AS "SERIES",
        "fragment" || '.' || "series" AS "FRAGMENT_SERIES", "time" AS "TIME", TO_DATE("time") AS "DAY",
        "source" AS "SOURCE", "unit" AS "UNIT", "value" AS "VALUE", "value" AS "VALUE_MIN",
@@ -124,13 +153,49 @@ SELECT "id" AS "ID", "fragment" AS "FRAGMENT", "series" AS "SERIES",
 FROM "DATABRICKS6918E1F0.cumulocity_t2180777119:v1.curated_measurement"
 ```
 
-Measures: `VALUE` (SUM), `VALUE_MIN` (MIN), `VALUE_MAX` (MAX), all *Quantity with Unit* on `UNIT`
-(semantic type *Unit of Measure*); `SAMPLES` (SUM, the row count); calculated *Average Value* =
-`VALUE / SAMPLES`. Aggregating the values across series with different units shows `•`, so filter
-or group by *Fragment and Series* (the Grafana `series` variable); *Device* (the `device` variable)
-shows device names through the text association. The preview returned all 14.65 million rows and per
-series min, max and average (for example `air_flow_nm3h`: 125,246 samples, average 5,403.8 Nm³/h).
-Each query runs live against the Delta Share (Federation).
+`VALUE` appears three times because a measure has one aggregation; `SAMPLES` counts rows and gives the
+average in the Analytic Model. `FRAGMENT_SERIES` is a single filter for one series, since series names
+repeat across fragments (`health_score` is in six).
+
+![DBX_MEASUREMENT: SQL and properties](img/05-measurement-view.jpg)
+
+In *Attributes → Edit*: business names as below, `UNIT` semantic type **Unit of Measure**. The key
+(`ID`, `FRAGMENT`, `SERIES`) comes from the source table.
+
+![DBX_MEASUREMENT attributes](img/06-measurement-attributes.jpg)
+
+For `VALUE`, `VALUE_MIN`, `VALUE_MAX` and `SAMPLES`: *⋯ → Change to Measure*. Then *Measures → Edit*:
+aggregation SUM / MIN / MAX / SUM, the three value measures *Quantity with Unit* with *Unit Column*
+`Unit`.
+
+![DBX_MEASUREMENT measures: aggregation and unit](img/07-measurement-measures.jpg)
+
+*Associations → + → Association*, target `DBX_DEVICE`. Datasphere maps the key columns by itself
+(`ID` → `Device ID`), which is wrong here: delete that line and drag *Device* (`SOURCE`) onto *Device
+ID*. *Deploy*.
+
+![Association SOURCE to DBX_DEVICE.ID](img/08-association.jpg)
+
+**4. Analytic Model `DBX_MEASUREMENT_AM`.** In `DBX_MEASUREMENT`, *Create Analytic Model*: it takes the
+fact with all measures and attributes and adds *Device* as a dimension through the association. Set
+*Name* `Measurements (Databricks)`, *Technical Name* `DBX_MEASUREMENT_AM`.
+
+![Analytic Model with fact source and Device dimension](img/09-analytic-model.jpg)
+
+*Measures → + → Calculated Measure*: *Average Value*, expression `VALUE / SAMPLES`, *Validate*.
+(Datasphere derives the technical name `Average_Value` from the business name.) *Deploy*.
+
+![Calculated measure Average Value](img/10-average-measure.jpg)
+
+**5. Check.** *Preview*, add *Fragment and Series* to *Rows*. Without a series in rows or filter, the
+value measures show `•`: they mix units. On 2026-11-09 the preview read all 14.65 million rows live
+from the Delta Share (Federation) in about 15 seconds, for example `air_flow_nm3h`: 125,282 samples,
+min 142.47, max 9,031.81, average 5,402.9 Nm³/h.
+
+![Preview grouped by Fragment and Series](img/11-preview.jpg)
+
+In SAC, *Fragment and Series* takes the place of the Grafana `series` variable and *Device* of
+`device`.
 
 ## From an Iceberg change to Datasphere
 
