@@ -56,9 +56,10 @@ column in a remote table it already installed. Changing the counts cost four att
 - `NUMBER(38,0)`: "MISMATCH IN DATA TYPE SCALE" (input 0, actual 9). The "actual" type is the one
   installed first. A reinstall 2 minutes after BDC extracted this publish still imported precision
   19, so Datasphere's copy of the CSN also lags behind BDC.
-- `NUMBER(38,9)`, the original type: published 2026-11-09. A reinstall 6 minutes later still
-  imported scale 0, the definition published two days before. Retry the reinstall a few hours after
-  such a publish.
+- `NUMBER(38,9)`, the original type: published 2026-11-09 at 09:34 UTC. A reinstall 6 minutes later
+  still imported scale 0, the definition published two days before. The reinstall at 11:29 UTC, two
+  hours after the publish, completed in 9 minutes, and Datasphere served the alarm-based counts.
+  Retry the reinstall a few hours after such a publish.
 
 While a reinstall fails, the tables installed before stay as they were.
 
