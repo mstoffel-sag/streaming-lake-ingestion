@@ -98,13 +98,25 @@ object that has the fragment; `LAST_UPDATED` is the newest change of the fragmen
 object's alarms. Checked against Cumulocity on 2026-11-07 15:01 UTC: 33 of 39 objects with the
 fragment matched; 2 had an alarm raised or cleared after the newest alarm in the lake (14:59), and 4
 last changed before the ingestion started, so the lake has no row for them (one of these, 723200,
-shows a warning in the fragment without any open alarm). The counts are `NUMBER(38,0)`, and the CSN
-declares all numbers as `cds.Decimal(p, s)`. The publish rejected `cds.Integer64` for the
-`NUMBER(13,0)` that `COUNT_IF` returns ("does not match the provider type [decimal(13, 0)]"); with
-`NUMBER(19,0)` the publish passed, but the Datasphere reinstall failed twice with "MISMATCH IN DATA
-TYPE PRECISION" (input 19, actual 38). A reinstall 3 minutes after the `NUMBER(38,0)` publish (and 2
-minutes after BDC extracted it) still imported the precision-19 definition: Datasphere's copy of the
-CSN lags behind BDC. While a reinstall fails, the tables installed before stay as they were.
+shows a warning in the fragment without any open alarm). The counts keep the type of the source columns, `NUMBER(38,9)`, and the CSN declares all numbers as
+`cds.Decimal(p, s)`.
+
+**Keep the column types of an installed table.** A Datasphere reinstall can't change the type of a
+column in a remote table it already installed. Changing the counts cost four attempts (2026-11-07 to
+2026-11-09):
+
+- `cds.Integer64` for the `NUMBER(13,0)` that `COUNT_IF` returns: the publish failed, "does not
+  match the provider type [decimal(13, 0)]".
+- `NUMBER(19,0)` as `cds.Decimal(19,0)`: published, but the reinstall failed twice with "MISMATCH IN
+  DATA TYPE PRECISION" (input 19, actual 38).
+- `NUMBER(38,0)`: "MISMATCH IN DATA TYPE SCALE" (input 0, actual 9). The "actual" type is the one
+  installed first. A reinstall 2 minutes after BDC extracted this publish still imported precision
+  19, so Datasphere's copy of the CSN also lags behind BDC.
+- `NUMBER(38,9)`, the original type: published 2026-11-09. A reinstall 6 minutes later still
+  imported scale 0, the definition published two days before. Retry the reinstall a few hours after
+  such a publish.
+
+While a reinstall fails, the tables installed before stay as they were.
 
 Every shared table is a dynamic table that refreshes within `target_lag` on the tenant's warehouse;
 with all measurement fragments that is over 100 tables. Raise `target_lag` or narrow
