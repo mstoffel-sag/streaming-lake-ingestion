@@ -12,6 +12,20 @@ and CSN passed to `SYSTEM$SAP_PUBLISH_DATA_PRODUCT`. Content matches the Databri
 | `cumulocity_bdc_data_product.ipynb` | Creates the tables, share, procedures and task graph, and publishes |
 | `cumulocity_bdc_tear_down.ipynb` | Removes the data product |
 
+## Databases
+
+The data product uses three databases per tenant (`<T>` = tenant ID). Only the last one is shared with BDC.
+
+| Database | Created by | Contains | Role |
+|---|---|---|---|
+| `CUMULOCITY_ICEBERG_<T>` | `../cumulocity_build_up.ipynb` | The Cumulocity Iceberg tables (`cdc_*`, `latest_*`), linked to the Polaris catalog. Read-only; the data stays in Cumulocity's S3 storage | Source of every shared table |
+| `CUMULOCITY_<T>` | `../cumulocity_build_up.ipynb`, extended by `cumulocity_bdc_data_product.ipynb` | `CURATED`: dynamic tables for users and Grafana. `OPS`: the build-up's schema-change task, alert and `SCHEMA_STATE`, plus the procedures `BDC_CREATE_TABLES`, `BDC_CHECK`, `BDC_CSN`, `BDC_PUBLISH`, the tasks `BDC_CHECK`, `BDC_PUBLISH` and the publish log `BDC_STATE` | Builds and publishes the data product; not shared |
+| `CUMULOCITY_BDC_<T>` | `cumulocity_bdc_data_product.ipynb` | Schema `CUMULOCITY` with the shared tables below, nothing else. Snowflake-managed Iceberg V3 (copy-on-write, `COMPATIBLE` serialization), set on the database so every table inherits it; the data is stored in Snowflake | The data product: granted to the share on the Zerocopy Connector |
+
+BDC needs a database of its own: one database per data product, and the connector accepts only
+Snowflake-managed Iceberg V3 tables with a primary key. The linked Iceberg tables in `CUMULOCITY_ICEBERG_<T>`
+don't qualify, so the shared tables copy them as dynamic tables.
+
 ## Tables
 
 All in `CUMULOCITY_BDC_<T>.CUMULOCITY`, dynamic Iceberg tables refreshed within `target_lag` (10 minutes):
