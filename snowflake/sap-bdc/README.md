@@ -37,9 +37,9 @@ All in `CUMULOCITY_BDC_<T>.CUMULOCITY`, dynamic Iceberg tables refreshed within 
 | `INVENTORY_<FRAGMENT>` | other `cdc_inventory` tables | managed object with that fragment | `ID` |
 | `EVENT`, `EVENT_<FRAGMENT>` | `cdc_event` tables | event | `ID` |
 | `<FRAGMENT>`, e.g. `SEWPUMP_WINDINGTEMPC` | `cdc_measurement` tables matching `measurement_tables` (default `%`) | measurement, one column per series plus `<SERIES>_UNIT` | `ID` |
-| `MEASUREMENT` | the same measurement tables | measurement and series, long format: `ID, FRAGMENT, SERIES, TIME, SOURCE, VALUE, UNIT` | `ID, FRAGMENT, SERIES` |
+| `MEASUREMENT_SERIES` | the same measurement tables | measurement and series, long format: `ID, FRAGMENT, SERIES, TIME, SOURCE, VALUE, UNIT` | `ID, FRAGMENT, SERIES` |
 
-- Join `SOURCE` to `INVENTORY.ID`. `MEASUREMENT` is the fact for an Analytic Model.
+- Join `SOURCE` to `INVENTORY.ID`. `MEASUREMENT_SERIES` is the fact for an Analytic Model.
 - Not shared: `cdc_rejected`, `internal`, and `latest_*` (Snowflake can't read equality deletes; the
   `INVENTORY*` tables carry the same current state).
 - Current state = the latest row per `ID` by `lastUpdated`, then the newest other timestamp column. Cumulocity
@@ -55,6 +55,11 @@ All in `CUMULOCITY_BDC_<T>.CUMULOCITY`, dynamic Iceberg tables refreshed within 
 **Keep column types stable.** A Datasphere reinstall can't change the type of an installed column. Numbers
 stay as in the source (counts are `NUMBER(38,9)`) and the CSN declares them as `cds.Decimal(p, s)`. Moving
 the counts to other types took four failed attempts and was reverted.
+
+**Don't reuse a table name with other columns.** SAP keeps the first schema it saw for a shared table name.
+The long table was called `MEASUREMENT` on Oct 29 with other columns; the Nov 9 version under the same name
+failed the reinstall with "COLUMN IS MISSING IN REMOTE DATA SOURCE" for `ID` and `SOURCE`, so it is now
+`MEASUREMENT_SERIES`.
 
 ## Setup
 
